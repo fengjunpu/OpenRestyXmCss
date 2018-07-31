@@ -3,7 +3,7 @@ local cjson = require("cjson.safe")
 local _M = {}      
 _M._VERSION = '1.0'
 
-local redis_ip = "106.14.78.92"
+local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
 local redis_port = 5128
 local reids_bucket_port = 5128
 
@@ -29,7 +29,7 @@ function internal_reflush_SecretKey(stgname_bucket)
         if not res and err then
             return false, err
         end
-
+		--ngx.log(ngx.ERR,"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@===>:",redis_key)
         local SecretKey = res[1]
         local AccessKey = res[2]
         local StorageDomain = res[3]
@@ -320,14 +320,18 @@ function _M.handle_add_bucket(self,jreq)
 	local BucketName = jreq["CssCenter"]["Body"]["BucketName"] 
 	local SecretKey = jreq["CssCenter"]["Body"]["SecretKey"] 
 	local AccessKey = jreq["CssCenter"]["Body"]["AccessKey"]
-	local RefulushTime = ngx.time()
+	local RegionName = jreq["CssCenter"]["Body"]["RegionName"]
 	
+--	local year,month,day,hour,min,sec = string.match(ngx.utctime(),"(%d+)-(%d+)-(%d+) (%d+):(%d+):(%d+)")
+--	local RefulushTime = os.time({day=day, month=month, year=year, hour=hour, min=min, sec=sec})
+	local RefulushTime = ngx.time()	
 	--Ë¢ÐÂÄÚ´æ
 	local ak_key =  StorageName.."_"..BucketName.."_AK"
 	local sk_key =  StorageName.."_"..BucketName.."_SK"
 	local dm_key =  StorageName.."_"..BucketName.."_DM"
+	local rg_key = 	StorageName.."_"..BucketName.."_RG"
 	local reflush_key = StorageName.."_"..BucketName.."_REFLUSH"
-		
+	
 	if ngx.shared.storage_key_data:get(ak_key) ~= nil or
 	   ngx.shared.storage_key_data:get(sk_key) ~= nil or
 	   ngx.shared.storage_key_data:get(dm_key) ~= nil 
@@ -339,8 +343,8 @@ function _M.handle_add_bucket(self,jreq)
 	local opt = {["redis_ip"]=redis_ip,["redis_port"]=reids_bucket_port,["timeout"]=3}
 	local red_handler = redis_iresty:new(opt)
 	if not red_handler then
-        	return false,"redis_iresty:new failed"
-        end
+		return false,"redis_iresty:new failed"
+    end
 
 	local res, err = red_handler:hmget(redis_key,"BucketName","StorageName")
 	if not res and err then 
@@ -357,14 +361,18 @@ function _M.handle_add_bucket(self,jreq)
 	   ngx.shared.storage_key_data:get(sk_key) ~= SecretKey or 
 	   ngx.shared.storage_key_data:get(dm_key) ~= DomainName 
 	then
+		if not RegionName then 
+			RegionName = "DefaultRegion"
+		end 
 		ngx.shared.storage_key_data:set(ak_key,AccessKey)
 		ngx.shared.storage_key_data:set(sk_key,SecretKey)
 		ngx.shared.storage_key_data:set(dm_key,DomainName)
+		ngx.shared.storage_key_data:set(rg_key,RegionName)
 		ngx.shared.storage_key_data:set(reflush_key,RefulushTime)
 		
 		local res, err = red_handler:hmset(redis_key,"BucketName",BucketName,"StorageDomain",DomainName,
 											"SecretKey",SecretKey,"AccessKey",AccessKey,
-											"StorageName",StorageName)
+											"StorageName",StorageName,"RegionName",RegionName)
 		if not res and err then 
 			return false, err
 		end 

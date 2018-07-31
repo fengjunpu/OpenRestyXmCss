@@ -1,5 +1,16 @@
 local css_base_iresty = require("storage_helper.css_base")
 local cjson = require("cjson.safe")
+local mysql_iresty = require("storage_helper.mysql_iresty")
+
+--[[
+local mysql_ip = "117.78.36.130"
+local mysql_port = 8635
+--]]
+local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
+local mysql_port = ngx.shared.shared_data:get("xmcloud_css_mysql_port")
+local mysql_user = "root"
+local mysql_pwd = "123456@XiongMai"
+local mysql_db = "xmcloud_css"
 
 local _M = {}      
 _M._VERSION = '1.0'
@@ -68,7 +79,7 @@ function _M.handle_upload_sign(self,jreq)
 			objname = format_day.."_"..objname
 			local ok, expirsday = css_base_iresty:get_storage_expirs_day(serinum,objtype)
 			if not ok then 
-				expirsday = 10
+				expirsday = 30
 			end
 			format_day = string.format("%03d",expirsday)
 			objname = format_day.."_"..objname
@@ -78,7 +89,7 @@ function _M.handle_upload_sign(self,jreq)
 		if not string.match(objname,"%w+_%w+_%w+_%w+-%w+.jpeg") then 
 			local ok, expirsday = css_base_iresty:get_storage_expirs_day(serinum,objtype)
 			if not ok or not expirsday then 
-				expirsday = 10
+				expirsday = 3
 			end
 			format_day = string.format("%03d",expirsday)
 			objname = format_day.."_"..objname
@@ -274,24 +285,58 @@ function _M.handle_download_sign(self,jreq)
 	local all_map = {}
 	local width = jreq["CssCenter"]["Body"]["Width"]
 	local height = jreq["CssCenter"]["Body"]["Height"]
-	local subrequest = nil
+	local clienttype = jreq["CssCenter"]["Body"]["ClientType"]
 	
 	for _,value in ipairs(jreq["CssCenter"]["Body"]["ObjInfo"]) do
+		local subrequest = nil
 		if value.StorageBucket then 
 			storage_bucket = value.StorageBucket
 		end
+
+		local url = value.ObjName 
 		
-		if storage_bucket then 
-			local csskey,cssbucket = string.match(storage_bucket,"(%w+)_(.*)")
-			if width and height and objtype == "PIC" and not subrequest then
-				if csskey == "OSS" then 
-					subrequest = "?x-oss-process=image/resize,m_fixed,h_"..height..",w_"..width
-				elseif csskey == "OBS" then 
-					subrequest = "?x-image-process=image/resize,m_lfit,h_"..height..",w_"..width
-				end 
+		if width and height and objtype == "PIC" then
+			if csskey == "OSS" then 
+				subrequest = "?x-oss-process=image/resize,m_fixed,h_"..height..",w_"..width
+			elseif csskey == "OBS" then 
+				subrequest = "?x-image-process=image/resize,m_lfit,h_"..height..",w_"..width
+			end 
+		end
+	
+		if clienttype and objtype == "PIC" then 
+			local alarmid = string.match(value.ObjName,"%w+_(%w+).jpeg")
+			if not alarmid then 
+				return false, "invalid objname"
+			end 
+			local opts = { ["mysql_ip"] = mysql_ip,["mysql_port"] = mysql_port,
+					   ["mysql_user"] = mysql_user,["mysql_pwd"] = mysql_pwd,
+					   ["mysql_db"] = mysql_db,["timeout"] = 3
+					}
+			local handledb,err = mysql_iresty:new(opts)
+			if not handledb then
+				return false,err
+			end
+			--从数据里面查询对应的图片名 (因为微信推送不会来主动获取图片名)
+			local select_sql = "SELECT ObjName, StgFlag from alarm_msg_tb where SeriNum=\'"..serinum.."\' and AlarmId=\'"..alarmid.."\'".." limit 1"
+			ngx.log(ngx.ERR,"select sql:",select_sql)
+			local res,err = handledb:update_sql(select_sql)
+			if not res and err then
+                ngx.log(ngx.ERR,"sql err:",err)
+                return false,err
 			end
 			
-			local url = value.ObjName
+			for _,v in pairs(res) do
+				if not v.ObjName or not v.StgFlag then 
+					return false, "alarm has no pic"
+				else 
+				    url = v.ObjName
+					storage_bucket = v.StgFlag
+				end
+			end 
+		end 
+	
+		if storage_bucket then 
+			local csskey,cssbucket = string.match(storage_bucket,"(%w+)_(.*)")
 			if subrequest then
 				url = url..subrequest
 			end
@@ -299,6 +344,8 @@ function _M.handle_download_sign(self,jreq)
 			local signle_map = {}
 			if clienttype then 
 				local expires = {}
+				--local year,month,day,hour,min,sec = string.match(ngx.utctime(),"(%d+)-(%d+)-(%d+) (%d+):(%d+):(%d+)")
+				--local utctime = os.time({day=day, month=month, year=year, hour=hour, min=min, sec=sec}) + 3600
 				local utctime = ngx.time() + 3600
 				expires["Date"] = utctime
 				local _,signature = css_base_iresty:make_signature("GET",expires,url,storage_bucket)
@@ -306,7 +353,7 @@ function _M.handle_download_sign(self,jreq)
 				local accsignature = nil
 				if csskey == "OBS" then 
 					accsignature = "AWSAccessKeyId="..accesskey.."&Expires="..utctime.."&Signature="..signature
-				elseif csskey == "OSS" then 
+				elseif csskey == "OSS" or csskey == "S3" then 
 					accsignature = "OSSAccessKeyId="..accesskey.."&Expires="..utctime.."&Signature="..signature
 				end 
 
@@ -331,82 +378,6 @@ function _M.handle_download_sign(self,jreq)
 		end
 	end 
 	
---[[
-	local csskey,cssbucket = string.match(storage_bucket,"(%w+)_(.*)")
-	if width and height and objtype == "PIC" then
-		if csskey == "OSS" then 
-			subrequest = "?x-oss-process=image/resize,m_fixed,h_"..height..",w_"..width
-		elseif csskey == "OBS" then 
-			subrequest = "?x-image-process=image/resize,m_lfit,h_"..height..",w_"..width
-		end 
-	end
-	
-	local clienttype = jreq["CssCenter"]["Body"]["ClientType"]
-	if clienttype then
-		for _,value in ipairs(jreq["CssCenter"]["Body"]["ObjInfo"]) do
-			if value.ObjName then
-				local url = value.ObjName
-				if subrequest then
-					url = url..subrequest
-				end
-
-				local m_storage_bucket = storage_bucket
-				if value.StorageBucket and value.StorageBucket ~= "Default" then 
-					m_storage_bucket = value.StorageBucket
-				end
-				
-				local expires = {}
-				local utctime = ngx.time() + 3600
-				expires["Date"] = utctime
-				local _,signature = css_base_iresty:make_signature("GET",expires,url,m_storage_bucket)
-				local accesskey = ngx.shared.storage_key_data:get(m_storage_bucket.."_AK")
-				local accsignature = nil
-				if csskey == "OBS" then 
-					accsignature = "AWSAccessKeyId="..accesskey.."&Expires="..utctime.."&Signature="..signature
-				elseif csskey == "OSS" then 
-					accsignature = "OSSAccessKeyId="..accesskey.."&Expires="..utctime.."&Signature="..signature
-				end 
-
-				if subrequest then
-					url = url.."&"..accsignature
-				else
-					url = url.."?"..accsignature
-				end
-				
-				local signle_map = {}
-				signle_map["Host"] = ngx.shared.storage_key_data:get(m_storage_bucket.."_DM")	
-				signle_map["URL"] = "/"..url
-				all_map[#all_map + 1] = signle_map
-			end
-		end
-	end
-
-    if not clienttype then
-		for _,value in ipairs(jreq["CssCenter"]["Body"]["ObjInfo"]) do
-			if value.ObjName then
-				local url = value.ObjName
-				if subrequest then
-					url = url..subrequest
-				end
-				
-				local m_storage_bucket = storage_bucket
-				if value.StorageBucket and value.StorageBucket ~= "Default" then 
-					m_storage_bucket = value.StorageBucket
-				end
-					
-				local signature = css_base_iresty:make_signature("GET",header,url,m_storage_bucket)
-				local signle_map = {}
-				signle_map["Host"] = ngx.shared.storage_key_data:get(m_storage_bucket.."_DM")
-				signle_map["URL"] = "/"..url
-				signle_map["ReqHeader"] = {}
-				signle_map["ReqHeader"]["Date"] = ostime
-				signle_map["ReqHeader"]["Authorization"] = signature
-				all_map[#all_map + 1] = signle_map
-			end
-		end
-    end
---]]
-
 	local jrsp = {}
 	jrsp["CssCenter"] = {}
 	jrsp["CssCenter"]["Body"] = {}
@@ -421,7 +392,6 @@ function _M.handle_download_sign(self,jreq)
 	jrsp["CssCenter"]["Header"]["ErrorNum"] = "200"
 	if #all_map == 0 then 
 		local debug_str = cjson.encode(jreq)
-		--ngx.log(ngx.ERR,"==============!!!!!!!!!!!!@@@@@@@@@:",debug_str)
 	end
 	local resp_str = cjson.encode(jrsp)
 	ngx.header.content_length = string.len(resp_str)

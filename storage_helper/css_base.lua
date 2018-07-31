@@ -1,17 +1,41 @@
 local redis_iresty = require("common_lua.redis_iresty")
+local restystr = require("resty.string")
+local resty_sha265 = require("resty.sha256")
+local resty_hmac = require("resty.hmac")
 
 local _M = {}      
 _M._VERSION = '1.0'
 
-local redis_ip = "106.14.78.92"
+local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
 local redis_port = 5128
 local reids_bucket_port = 5128
+
+function sha256(str)
+    local sha256 = resty_sha265:new()
+    sha256:update(str)
+    local digest = sha256:final()
+    return string.lower(restystr.to_hex(digest))
+end
+
+function hmac_sha256(sk, str)
+    local hm, err = resty_hmac:new(sk)
+    local signature, hmac_signature, hex_signature = hm:generate_signature("sha256",str)
+    if not signature then
+        ngx.log("failed to sign message: ", err)
+        return false, err
+    end
+    return signature, hmac_signature, hex_signature
+end
+
 
 function internal_reflush_SecretKey(stgname_bucket)
 	local ak_key =  stgname_bucket.."_AK"
 	local sk_key =  stgname_bucket.."_SK"
 	local dm_key =  stgname_bucket.."_DM"
+	local rg_key = stgname_bucket.."_RG"
 	local reflush_key = stgname_bucket.."_REFLUSH"
+	--local year,month,day,hour,min,sec = string.match(ngx.utctime(),"(%d+)-(%d+)-(%d+) (%d+):(%d+):(%d+)")
+	--local now_time = os.time({day=day, month=month, year=year, hour=hour, min=min, sec=sec})
 	local now_time = ngx.time()
 	local reflush_time = ngx.shared.storage_key_data:get(reflush_key)
 	
@@ -24,8 +48,9 @@ function internal_reflush_SecretKey(stgname_bucket)
 		if not red_handler then			
 			return false,"redis_iresty:new failed"	
 		end
+		
 		local redis_key = "<StorageKey>_"..stgname_bucket
-		local res,err = red_handler:hmget(redis_key,"SecretKey","AccessKey","StorageDomain")
+		local res,err = red_handler:hmget(redis_key,"SecretKey","AccessKey","StorageDomain","RegionName")
 		if not res and err then 
 			return false, err 
 		end
@@ -33,6 +58,7 @@ function internal_reflush_SecretKey(stgname_bucket)
 		local SecretKey = res[1]
 		local AccessKey = res[2]
 		local StorageDomain = res[3]
+		local RegioName = res[4]
 		
 		if SecretKey == ngx.null or AccessKey == ngx.null 
 		   or StorageDomain == ngx.null then 
@@ -42,6 +68,7 @@ function internal_reflush_SecretKey(stgname_bucket)
 			ngx.shared.storage_key_data:set(ak_key,AccessKey)
 			ngx.shared.storage_key_data:set(sk_key,SecretKey)
 			ngx.shared.storage_key_data:set(dm_key,StorageDomain)
+			ngx.shared.storage_key_data:set(rg_key,RegioName)
 			ngx.shared.storage_key_data:set(reflush_key,now_time)
 		end
 	end	
@@ -64,10 +91,13 @@ function _M.make_signature(self,method,headers,objectKey,csskey)
 	local ak = ngx.shared.storage_key_data:get(csskey.."_AK")  --OSS_test-pic-123_AK
 	local sk = ngx.shared.storage_key_data:get(csskey.."_SK")  --OSS_test-pic-123_SK
 	if not ak or not sk then 
-		local ok,_ = internal_reflush_SecretKey(csskey)
-		if not ok then
-			return false, csskey.."has not ak or sk"
-		end 
+		internal_reflush_SecretKey(csskey)
+		ak = ngx.shared.storage_key_data:get(csskey.."_AK")
+		sk = ngx.shared.storage_key_data:get(csskey.."_SK") 
+		if not sk or not ak then 
+			ngx.log(ngx.ERR,"has not ak or sk==========>",csskey)
+			return false, csskey.."has not ak or sk "
+		end  
 	end 
 	local stortype, cssbucket = string.match(csskey,"(%w+)_(.*)")
 	local canonicalizedResource = '/'
@@ -90,6 +120,100 @@ function _M.make_signature(self,method,headers,objectKey,csskey)
 end
 
 --[[
+--AWS S3签名版本4（目前国内只支持签名版本4）
+--method 类型 GET 或者 PUT
+--headers 里面一般就是time之类的
+--objname 上传或者下载的文件名
+--csskey 云存储名称+“_”+bucket名字的组合唯一标示（S3_test-pic-123）
+例如:
+--产生签名
+req_headers["host"] = "s3-cn-nor-01.s3.cn-north-1.amazonaws.com.cn"
+req_headers["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
+req_headers["x-amz-date"] =  20180731T085319Z
+请求:
+header["Host"] = storage_domain
+header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
+header["x-amz-date"] = 20180731T085319Z
+header["Authorization"] = sign
+--]]
+function _M.make_signature_aws_v4(method,headers,objname,csskey)
+	local signed_headers = "host;x-amz-content-sha256;x-amz-date"
+	local sign_type = "AWS4-HMAC-SHA256"
+	local storage_name = "s3"
+	
+	--获取秘钥和bucket所在区域信息
+	local ak = ngx.shared.storage_key_data:get(csskey.."_AK")  --Access Key
+	local sk = ngx.shared.storage_key_data:get(csskey.."_SK")  --Secrity Key
+	local regioninfo = ngx.shared.storage_key_data:get(csskey.."_RG") --Bucket Region Info
+	if not ak or not sk or not regioninfo then 
+		internal_reflush_SecretKey(csskey)
+		ak = ngx.shared.storage_key_data:get(csskey.."_AK")
+		sk = ngx.shared.storage_key_data:get(csskey.."_SK") 
+		regioninfo = ngx.shared.storage_key_data:get(csskey.."_RG")
+		if not ak or not sk or not regioninfo then
+			return false, csskey.."has not ak or sk"
+		end 
+	end
+	
+	--规定死三个参数原因是省去了字典排序的麻烦但同时也带来了灵活性的损失
+	if type(headers) ~= "table" or 
+	   not headers["host"] or 
+	   not headers["x-amz-content-sha256"] or 
+	   not headers["x-amz-date"]  then 
+		return false, "invaild headers key"
+	end 
+		
+	local canonical_headers_table = {}
+	table.insert(canonical_headers_table,"host:"..headers["host"])
+	table.insert(canonical_headers_table,"x-amz-content-sha256:"..headers["x-amz-content-sha256"])
+	table.insert(canonical_headers_table,"x-amz-date:"..headers["x-amz-date"])
+	local canonical_headers = table.concat(canonical_headers_table,'\n').."\n"
+	
+	local querystring = headers["queryparam"] or ""
+	local signed_headers = "host;x-amz-content-sha256;x-amz-date"
+	local hash_payload = "UNSIGNED-PAYLOAD"	
+	
+	--开始制作签名
+--=====================================阶段一============================================
+	local canonitcal_request = {}
+	table.insert(canonitcal_request,method)
+	table.insert(canonitcal_request,"/"..objname)
+	table.insert(canonitcal_request,querystring)
+	table.insert(canonitcal_request,canonical_headers)
+	table.insert(canonitcal_request,signed_headers)
+	table.insert(canonitcal_request,hash_payload)
+	local canonical_request_str = table.concat(canonitcal_request,'\n')
+	
+--=============================================阶段二==========================
+	local req_date = headers["x-amz-date"]
+	local socp_date = string.sub(req_date,1,8)
+	local scop = socp_date.."/"..regioninfo.."/s3/aws4_request"
+	local canonical_request_h256 = sha256(canonical_request_str)
+	local stringtosign = {}
+	table.insert(stringtosign,sign_type)
+	table.insert(stringtosign,req_date)
+	table.insert(stringtosign,scop)
+	table.insert(stringtosign,canonical_request_h256)
+	local stringtosign_str = table.concat(stringtosign,'\n')
+	
+--=============================================阶段三==========================	
+	local datekey_sec = "AWS4"..sk
+	local _, hmac_datekey, hex_dateregionkey = hmac_sha256(datekey_sec,socp_date)
+	local _, hmac_dateregionkey, hex_dateregionkey = hmac_sha256(hmac_datekey,region)
+	local _, hmac_dateregionservicekey,hex_dateregionservicekey = hmac_sha256(hmac_dateregionkey,storage_name)
+	local _, hmac_signingkey,hex_signingkey = hmac_sha256(hmac_dateregionservicekey,"aws4_request")
+	local _, hmac_sign, hex_signingkey = hmac_sha256(hmac_signingkey,stringtosign_str)
+	
+	local Auth = "AWS4-HMAC-SHA256 ".."Credential="..ak.."/"..scop
+	local signheaders = " SignedHeaders="..signed_headers
+	local sign = " Signature="..hex_signingkey
+	local request_auth = Auth..","..signheaders..","..sign
+	
+	return Auth, request_auth
+end
+
+
+--[[
 check_css_flag: 检查设备云存储（图片/视频）是否开通或者是否过期
 serinum: 设备序列号(c142dd39f8222e1d)
 objtype: 查询类型(PIC/VIDEO)
@@ -108,7 +232,6 @@ function _M.check_css_flag(self,serinum,objtype)
 		if not red_handler then			
 			return false,"redis_iresty:new failed"	
 		end
-		
 		local storage_info_key = "<CLOUD_STORAGE>_"..serinum
 		local res = nil
 		local err = nil
@@ -137,12 +260,14 @@ function _M.check_css_flag(self,serinum,objtype)
 		   endtime == ngx.null then 
 			return true, nil 
 		end 
-		
-		local expairs_time = endtime - ngx.time()
+
+		--local year,month,day,hour,min,sec = string.match(ngx.utctime(),"(%d+)-(%d+)-(%d+) (%d+):(%d+):(%d+)")
+		--local now_time = os.time({day=day, month=month, year=year, hour=hour, min=min, sec=sec})
+		local now_time = ngx.time()
+		local expairs_time = endtime - now_time
 		if expairs_time < 0 then
 			return true, nil 
 		end 
-		
 		
 		ngx.shared.css_share_data:set(css_key,stgtype.."_"..stgbucket)
 		ngx.shared.css_share_data:set(endtime_key,endtime)
@@ -249,10 +374,13 @@ end
 --]]
 function _M.get_storage_expirs_day(self,serinum,objtype)
 	local redis_key = nil
+	local default_expires_day = 3
 	if objtype == "PIC" then
 		redis_key = "PicStgTime"
+		default_expires_day = 3
 	elseif objtype == "VIDEO" then
 		redis_key = "VideoStgTime"
+		default_expires_day = 30
 	else
 		return false, "InValid Storage"
 	end
@@ -260,18 +388,18 @@ function _M.get_storage_expirs_day(self,serinum,objtype)
 	local opts = {["redis_ip"]=redis_ip,["redis_port"]=redis_port,["timeout"]=3}
 	local red_handler = redis_iresty:new(opts)
 	if not red_handler then
-		return true,10
+		return true,default_expires_day
 	end
 
 	local storage_key = "<CLOUD_STORAGE>_"..serinum
 	local res, err = red_handler:hget(storage_key,redis_key)
 	if not res and err then
-		return true,10
+		return true,default_expires_day
 	end
 
 	if res == ngx.null and not err then
-		--如果不存在默认回滚时间为10天
-		return true,10
+		--如果不存在默认回滚时间
+		return true,default_expires_day
 	end	
 	return true,res
 end

@@ -3,19 +3,16 @@ local mysql_iresty = require("storage_helper.mysql_iresty")
 local css_base_iresty = require("storage_helper.css_base")
 local _M = {}      
 _M._VERSION = '1.0'
---[[
-local mysql_ip = "123.59.27.192"
-local mysql_port = 6606
-local mysql_user = "root"
-local mysql_pwd = "qwertyuiop"
-local mysql_db = "xmcloud_css"
---]]
 
-local mysql_ip = "117.78.36.130"
-local mysql_port = 8635
+local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
+local mysql_port = ngx.shared.shared_data:get("xmcloud_css_mysql_port")
 local mysql_user = "root"
 local mysql_pwd = "123456@XiongMai"
 local mysql_db = "xmcloud_css"
+--[[
+local mysql_ip = "117.78.36.130"
+local mysql_port = 8635
+--]]
 
 function _M.handle_upload_pic_res(self,jreq)
 	local flag = jreq["CssCenter"]["Body"]["UploadFlag"]
@@ -71,11 +68,14 @@ function _M.handle_upload_video_res(self,jreq)
 	if not handledb then
         	return false,err
 	end
+	
+	--local year,month,day,hour,min,sec = string.match(ngx.utctime(),"(%d+)-(%d+)-(%d+) (%d+):(%d+):(%d+)")
+	--local utc_time = os.time({day=day, month=month, year=year, hour=hour, min=min, sec=sec})
 	local utc_time = ngx.time()
-	--local get_storage_expirs_day(self,serinum,objtype)	
+	
 	local ok, expirsday = css_base_iresty:get_storage_expirs_day(serinum,"VIDEO")
 	if not ok then 
-		expirsday = 10
+		expirsday = 30
 	end 
 	local expirstime = expirsday*24*3600 + utc_time
 	local insert_sql = "insert into alarm_video_tb set SeriNum=\'"..serinum.."\',ChannelId="..channel..",ObjName=\'"..indexname.."\',StartTime=\'"..starttime.."\',StopTime=\'"..stoptime.."\',VideoSize="..objsize..",UtcTime="..utc_time..",PicFlag="..picflag..",ExpirseTime = "..expirstime

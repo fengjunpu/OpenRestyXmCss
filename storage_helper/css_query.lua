@@ -8,11 +8,13 @@ _M._VERSION = '1.0'
 local NOT_SUPPORT = 1001
 local NOT_OPEN = 1002
 
-local redis_ip = "106.14.78.92"
+local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
 local redis_port = 5128
 
-local cfg_redis_ip = "120.132.71.215"
+--[[
+local cfg_redis_ip = "120.92.117.227"
 local cfg_redis_port = 5141
+--]]
 
 function internal_send_resp_string(rspstatus,message_type,error_string)
 	if not message_type or type(message_type) ~= "string" then
@@ -52,6 +54,8 @@ function _M.handle_dev_query_css(self,jreq)
 		stgtype = "PIC"
 	end
 	--ngx.log(ngx.ERR,"====>",cjson.encode(jreq))
+--[[
+	--是否支持云存储 这个地方不用查了，如果不支持是不会来查询的
 	local opt = {["redis_ip"]=cfg_redis_ip,["redis_port"]=cfg_redis_port,["timeout"]=3}
 	local red_handler = redis_iresty:new(opt)
 	if not red_handler then
@@ -69,7 +73,8 @@ function _M.handle_dev_query_css(self,jreq)
 		internal_send_resp_string(NOT_SUPPORT,msg_type,"Dev Not Support Cloud Storage")
 		return true,NOT_SUPPORT
 	end 
-	
+--]]
+
 	local res,storage_bucket = css_base_iresty:check_css_flag(serinum,stgtype) --查一下支不支持
 	if not res and storage_bucket then
 		return false,storage_bucket
@@ -84,7 +89,6 @@ function _M.handle_dev_query_css(self,jreq)
 
 	return true,200
 end
-
 
 function _M.handle_query_css(self,jreq)
 	--检查请求的有效性

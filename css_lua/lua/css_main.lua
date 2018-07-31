@@ -154,33 +154,45 @@ function process_msg()
 end
 
 --加载对应的名字空间的IP地址的配置
---[[
-local function load_css_ip_addr()
-	--<1>--
-	auth_redis_port = 5121
-	auth_redis_ip = ngx.shared.shared_data:get("myconfig_css_redis4auth_ip")
-	if not auth_redis_ip then
-		local ip = "106.14.78.92"
-		ngx.shared.shared_data:set("myconfig_css_redis4auth_ip", ip)
-		auth_redis_ip = ip
+local function load_css_ip_addr()	
+--加载redis的ip 和 端口
+	local css_redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
+	local css_mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
+	local css_mysql_port = ngx.shared.shared_data:get("xmcloud_css_mysql_port")
+	if not css_redis_ip then 
+		css_redis_ip = os.getenv("CssRedisIp")
+		if css_redis_ip then 
+			ngx.shared.shared_data:set("xmcloud_css_redis_ip",css_redis_ip)
+		else 
+			return false 
+		end
 	end
 	
-	--<3>--
-	redis_port = 5132
-	redis_ip = ngx.shared.shared_data:get("myconfig_pms_redis4work_ip")
-	if not redis_ip then
-		local ip = "106.14.78.92"
-		ngx.shared.shared_data:set("myconfig_pms_redis4work_ip", ip)
-		redis_ip = ip
-	end
-	redis_ip = "120.132.71.215"
+--<加载mysql的ip 和 端口>	
+	if not css_mysql_ip or not css_mysql_port then 
+		local css_mysql_addr = os.getenv("CssMysqlAddr")
+		if not css_mysql_addr then 
+			return false
+		end
+		css_mysql_ip, css_mysql_port = string.match(css_mysql_addr,"(.*):(%d+)")
+		if css_mysql_ip and css_mysql_port then 
+			ngx.shared.shared_data:set("xmcloud_css_mysql_ip",css_mysql_ip)
+			ngx.shared.shared_data:set("xmcloud_css_mysql_port",css_mysql_port)
+		else 
+			return false
+		end
+	end 
+	
 	return true
 end
---]]
 
 --程序入口
 if(ngx.var.server_port == "6614" or  ngx.var.server_port == "6615") then
 	service_namespace = "css"
+	local ok = load_css_ip_addr()
+	if not ok then 
+		return false
+	end
 else
 	ngx.log(ngx.ERR,"invlaid ngx.var.server_port",ngx.var.server_port)
 	return false
