@@ -351,9 +351,9 @@ function _M.handle_download_sign(self,jreq)
 				local _,signature = css_base_iresty:make_signature("GET",expires,url,storage_bucket)
 				local accesskey = ngx.shared.storage_key_data:get(storage_bucket.."_AK")
 				local accsignature = nil
-				if csskey == "OBS" then 
+				if csskey == "OBS" or csskey == "S3" then 
 					accsignature = "AWSAccessKeyId="..accesskey.."&Expires="..utctime.."&Signature="..signature
-				elseif csskey == "OSS" or csskey == "S3" then 
+				elseif csskey == "OSS" then 
 					accsignature = "OSSAccessKeyId="..accesskey.."&Expires="..utctime.."&Signature="..signature
 				end 
 
