@@ -158,7 +158,6 @@ local function load_css_ip_addr()
 --加载redis的ip 和 端口
 	local css_redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
 	local css_mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
-	local css_mysql_port = ngx.shared.shared_data:get("xmcloud_css_mysql_port")
 	if not css_redis_ip then 
 		css_redis_ip = os.getenv("CssRedisIp")
 		if css_redis_ip then 
@@ -169,20 +168,14 @@ local function load_css_ip_addr()
 	end
 	
 --<加载mysql的ip 和 端口>	
-	if not css_mysql_ip or not css_mysql_port then 
-		local css_mysql_addr = os.getenv("CssMysqlAddr")
-		if not css_mysql_addr then 
-			return false
-		end
-		css_mysql_ip, css_mysql_port = string.match(css_mysql_addr,"(.*):(%d+)")
-		if css_mysql_ip and css_mysql_port then 
+	if not css_mysql_ip then 
+		css_mysql_ip = os.getenv("CssMysqlIp")
+		if not css_mysql_ip then 
 			ngx.shared.shared_data:set("xmcloud_css_mysql_ip",css_mysql_ip)
-			ngx.shared.shared_data:set("xmcloud_css_mysql_port",css_mysql_port)
-		else 
+		else
 			return false
 		end
 	end 
-	
 	return true
 end
 
