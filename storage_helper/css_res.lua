@@ -5,7 +5,7 @@ local _M = {}
 _M._VERSION = '1.0'
 
 local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
-local mysql_port = ngx.shared.shared_data:get("xmcloud_css_mysql_port")
+local mysql_port = 8635 
 local mysql_user = "root"
 local mysql_pwd = "123456@XiongMai"
 local mysql_db = "xmcloud_css"
