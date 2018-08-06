@@ -318,11 +318,11 @@ function _M.handle_download_sign(self,jreq)
 			end
 			--从数据里面查询对应的图片名 (因为微信推送不会来主动获取图片名)
 			local select_sql = "SELECT ObjName, StgFlag from alarm_msg_tb where SeriNum=\'"..serinum.."\' and AlarmId=\'"..alarmid.."\'".." limit 1"
-			ngx.log(ngx.ERR,"select sql:",select_sql)
+			--ngx.log(ngx.ERR,"select sql:",select_sql)
 			local res,err = handledb:update_sql(select_sql)
 			if not res and err then
-                ngx.log(ngx.ERR,"sql err:",err)
-                return false,err
+                		ngx.log(ngx.ERR,"sql err:",err)
+		                return false,err
 			end
 			
 			for _,v in pairs(res) do

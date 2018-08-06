@@ -74,6 +74,10 @@ function _M.handle_dev_query_css(self,jreq)
 		return true,NOT_SUPPORT
 	end 
 --]]
+	local msg_type = "MSG_CSS_DEV_QUERY_RSP"
+        if jreq["CssCenter"]["Header"]["MessageType"] == "MSG_CSS_QUERY_REQ" then 
+                msg_type = "MSG_CSS_QUERY_RSP"
+        end
 
 	local res,storage_bucket = css_base_iresty:check_css_flag(serinum,stgtype) --查一下支不支持
 	if not res and storage_bucket then
