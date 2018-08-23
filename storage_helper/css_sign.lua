@@ -261,7 +261,7 @@ function _M.handle_download_sign(self,jreq)
 	
 	--开始构造签名
 	local res = nil 
-	local storage_bucket = nil 
+	local storage_bucket = nil
 	if objtype ~= "PIC" then 
 		res,storage_bucket = css_base_iresty:check_css_flag(serinum,objtype)
 		if not res then
@@ -285,7 +285,7 @@ function _M.handle_download_sign(self,jreq)
 	local all_map = {}
 	local width = jreq["CssCenter"]["Body"]["Width"]
 	local height = jreq["CssCenter"]["Body"]["Height"]
-	local clienttype = jreq["CssCenter"]["Body"]["ClientType"]
+	local clienttype = jreq["CssCenter"]["Body"]["ClientType"] 
 	
 	for _,value in ipairs(jreq["CssCenter"]["Body"]["ObjInfo"]) do
 		local subrequest = nil
@@ -293,16 +293,7 @@ function _M.handle_download_sign(self,jreq)
 			storage_bucket = value.StorageBucket
 		end
 
-		local url = value.ObjName 
-		
-		if width and height and objtype == "PIC" then
-			if csskey == "OSS" then 
-				subrequest = "?x-oss-process=image/resize,m_fixed,h_"..height..",w_"..width
-			elseif csskey == "OBS" then 
-				subrequest = "?x-image-process=image/resize,m_lfit,h_"..height..",w_"..width
-			end 
-		end
-	
+		local url = value.ObjName 		
 		if clienttype and objtype == "PIC" then 
 			local alarmid = string.match(value.ObjName,"%w+_(%w+).jpeg")
 			if not alarmid then 
@@ -312,10 +303,12 @@ function _M.handle_download_sign(self,jreq)
 					   ["mysql_user"] = mysql_user,["mysql_pwd"] = mysql_pwd,
 					   ["mysql_db"] = mysql_db,["timeout"] = 3
 					}
+			
 			local handledb,err = mysql_iresty:new(opts)
 			if not handledb then
 				return false,err
 			end
+			
 			--从数据里面查询对应的图片名 (因为微信推送不会来主动获取图片名)
 			local select_sql = "SELECT ObjName, StgFlag from alarm_msg_tb where SeriNum=\'"..serinum.."\' and AlarmId=\'"..alarmid.."\'".." limit 1"
 			--ngx.log(ngx.ERR,"select sql:",select_sql)
@@ -337,10 +330,18 @@ function _M.handle_download_sign(self,jreq)
 	
 		if storage_bucket then 
 			local csskey,cssbucket = string.match(storage_bucket,"(%w+)_(.*)")
+			if width and height and objtype == "PIC" then
+				if csskey == "OSS" then 
+					subrequest = "?x-oss-process=image/resize,m_fixed,h_"..height..",w_"..width
+				elseif csskey == "OBS" then 
+					subrequest = "?x-image-process=image/resize,m_lfit,h_"..height..",w_"..width
+				end 
+			end
+			
 			if subrequest then
 				url = url..subrequest
 			end
-
+			
 			local signle_map = {}
 			if clienttype then 
 				local expires = {}

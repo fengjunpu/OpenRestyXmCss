@@ -9,10 +9,6 @@ local mysql_port = 8635
 local mysql_user = "root"
 local mysql_pwd = "123456@XiongMai"
 local mysql_db = "xmcloud_css"
---[[
-local mysql_ip = "117.78.36.130"
-local mysql_port = 8635
---]]
 
 function _M.handle_upload_pic_res(self,jreq)
 	local flag = jreq["CssCenter"]["Body"]["UploadFlag"]

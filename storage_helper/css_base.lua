@@ -27,7 +27,6 @@ function hmac_sha256(sk, str)
     return signature, hmac_signature, hex_signature
 end
 
-
 function internal_reflush_SecretKey(stgname_bucket)
 	local ak_key =  stgname_bucket.."_AK"
 	local sk_key =  stgname_bucket.."_SK"
@@ -223,10 +222,15 @@ redis_port： user_css数据库端口
 function _M.check_css_flag(self,serinum,objtype)
 	local css_key = serinum.."_"..objtype		--PIC VIDEO
 	local endtime_key = serinum.."_"..objtype.."_ENDTIME"
+	local reflush_key = serinum.."_CSS_REFLUSH"
+	
 	local css_value = ngx.shared.css_share_data:get(css_key)
 	local end_time =  ngx.shared.css_share_data:get(endtime_key)
+	local reflush_time = ngx.shared.css_share_data:get(endtime_key)
 	
-	if not css_value or not end_time then
+	local now_time = ngx.time()
+	
+	if not css_value or not end_time or now_time - reflush_time > 180 then
 		local opts = {["redis_ip"]=redis_ip,["redis_port"]=redis_port,["timeout"]=3}
 		local red_handler = redis_iresty:new(opts)
 		if not red_handler then			
@@ -248,7 +252,7 @@ function _M.check_css_flag(self,serinum,objtype)
 		end 
 		
 		if not res then 
-			return true, nil 
+			return true, nil --not buy storage 
 		end 
 		
 		local endtime = res[1]
@@ -258,24 +262,29 @@ function _M.check_css_flag(self,serinum,objtype)
 		if stgbucket == ngx.null  or 
 		   stgtype == ngx.null or 
 		   endtime == ngx.null then 
-			return true, nil 
+			return true, nil  --not buy storage
 		end 
-
+		
 		--local year,month,day,hour,min,sec = string.match(ngx.utctime(),"(%d+)-(%d+)-(%d+) (%d+):(%d+):(%d+)")
 		--local now_time = os.time({day=day, month=month, year=year, hour=hour, min=min, sec=sec})
-		local now_time = ngx.time()
-		local expairs_time = endtime - now_time
-		if expairs_time < 0 then
-			return true, nil 
-		end 
 		
 		ngx.shared.css_share_data:set(css_key,stgtype.."_"..stgbucket)
 		ngx.shared.css_share_data:set(endtime_key,endtime)
+		ngx.shared.css_share_data:set(reflush_key,now_time)
+		
+		end_time = endtime
 		css_value = stgtype.."_"..stgbucket
-		internal_reflush_SecretKey(css_value)
+	end 
+		
+	internal_reflush_SecretKey(css_value)
+	if endtime > 0 then 
+		local expairs_time = end_time - now_time
+		if expairs_time < 0 then
+			return true, nil 
+		end 
 	end 
 	
-	return true,css_value
+	return true,css_value 
 end
 
 --[[
@@ -283,7 +292,6 @@ check_analysis_flag:是否开通了人形检测功能
 serinum：设备序列号
 objtype: 对象类型(PIC/VIDEO)
 --]]
-
 function _M.check_analysis_flag(self,serinum,objtype)
 	local endtype = nil
 	if objtype == "PIC" then 
@@ -297,13 +305,16 @@ function _M.check_analysis_flag(self,serinum,objtype)
 	local analyse_endtime_key = serinum.."_AIENDTIME_"..endtype
 	local analyse_type_key = serinum.."_AITYPE_"..endtype
 	local analyse_stgbuck_key = serinum.."_AISTGBUC_"..endtype
+	local reflush_key = serinum.."_CSS_REFLUSH"
 	
 	local analyse_stgbuck = ngx.shared.css_share_data:get(analyse_stgbuck_key)
 	local analyse_type = ngx.shared.css_share_data:get(analyse_type_key)
 	local analyse_endtime = ngx.shared.css_share_data:get(analyse_endtime_key)
+	local relush_time = ngx.shared.css_share_data:get(reflush_key)
+	local now_time = ngx.time()
 	
 	if not analyse_endtime or not analyse_type or 
-	   not analyse_stgbuck then
+	   not analyse_stgbuck or (relush_time and now_time - relush_time > 600) then
 		local opt = {["redis_ip"]=redis_ip,["redis_port"]=redis_port,["timeout"]=3}
 		local red_handler = redis_iresty:new(opt)
 		if not red_handler then
@@ -341,8 +352,9 @@ function _M.check_analysis_flag(self,serinum,objtype)
 		end
 	end
 	
-	if analyse_endtime ~= ngx.null then
-		local expairs_time = analyse_endtime - ngx.time()
+	--analyse_endtime < 0 表示永久有效
+	if analyse_endtime ~= ngx.null and analyse_endtime > 0 then
+		local expairs_time = analyse_endtime - now_time
 		if expairs_time < 0 then
 			return true, nil
 		end
