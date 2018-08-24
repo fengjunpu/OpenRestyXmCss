@@ -25,6 +25,7 @@ function internal_send_resp_string(rspstatus,message_type,error_string)
 		ngx.log(ngx.ERR, "send_resp_string:type(error_string) ~= string", type(error_string))
 		ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
 	end
+	
 	--HTTP应答头统一都是OK，这样便于查找是应用错误，还是系统错误
 	local jrsp = {}
 	jrsp["CssCenter"] = {}
@@ -53,36 +54,18 @@ function _M.handle_dev_query_css(self,jreq)
 	if not stgtype then 
 		stgtype = "PIC"
 	end
-	--ngx.log(ngx.ERR,"====>",cjson.encode(jreq))
---[[
-	--是否支持云存储 这个地方不用查了，如果不支持是不会来查询的
-	local opt = {["redis_ip"]=cfg_redis_ip,["redis_port"]=cfg_redis_port,["timeout"]=3}
-	local red_handler = redis_iresty:new(opt)
-	if not red_handler then
-		return false,"redis_iresty:new failed"
+	
+	local msg_type = "MSG_CSS_DEV_QUERY_RSP"								  --设备查询是否支持云存储
+	if jreq["CssCenter"]["Header"]["MessageType"] == "MSG_CSS_QUERY_REQ" then --APP查询是否支持云存储
+			msg_type = "MSG_CSS_QUERY_RSP"
 	end
 	
-	local msg_type = "MSG_CSS_DEV_QUERY_RSP"
-	if jreq["CssCenter"]["Header"]["MessageType"] == "MSG_CSS_QUERY_REQ" then 
-		msg_type = "MSG_CSS_QUERY_RSP"
-	end
-	local cssflag,err = red_handler:hget(serinum,"CSSAccess") --从cfg中查找有没有CSS相关请求
-	if not cssflag and err then
-		return false,err 
-	elseif not cssflag then 
-		internal_send_resp_string(NOT_SUPPORT,msg_type,"Dev Not Support Cloud Storage")
-		return true,NOT_SUPPORT
-	end 
---]]
-	local msg_type = "MSG_CSS_DEV_QUERY_RSP"
-        if jreq["CssCenter"]["Header"]["MessageType"] == "MSG_CSS_QUERY_REQ" then 
-                msg_type = "MSG_CSS_QUERY_RSP"
-        end
-
-	local res,storage_bucket = css_base_iresty:check_css_flag(serinum,stgtype) --查一下支不支持
+	local res,storage_bucket = css_base_iresty:check_abality(serinum,stgtype,"CloudStorage") --查一下支不支持
 	if not res and storage_bucket then
+		ngx.log(ngx.ERR,"[QueryCss]:Inter Err err:",storage_bucket," SeriNum:",serinum," type:",stgtype)
 		return false,storage_bucket
-	elseif not storage_bucket then
+	elseif res and not storage_bucket then
+		ngx.log(ngx.ERR,"[QueryCss]:Not Open:",storage_bucket," SeriNum:",serinum," type:",stgtype)
 		internal_send_resp_string(NOT_OPEN,msg_type,"Cloud storage device not open")
 		return true,NOT_OPEN
 	end 
@@ -94,6 +77,7 @@ function _M.handle_dev_query_css(self,jreq)
 	return true,200
 end
 
+--APP查询是否支持云存储
 function _M.handle_query_css(self,jreq)
 	--检查请求的有效性
 	if not jreq["CssCenter"]["Body"]["SerialNumber"] or
@@ -202,7 +186,8 @@ function _M.handle_query_analysis(self,jreq)
 	local analysis_type = jreq["CssCenter"]["Body"]["AnalysisType"]
 	local analysis_objtype = jreq["CssCenter"]["Body"]["ObjType"]
 	
-	local ok,storage_bucket = css_base_iresty:check_analysis_flag(serinum,analysis_objtype)
+	--local ok,storage_bucket = css_base_iresty:check_analysis_flag(serinum,analysis_objtype)
+	local ok,storage_bucket = css_base_iresty:check_abality(serinum,analysis_objtype,"AiStorage")
 	if not ok and storage_bucket then 
 		return false, storage_bucket
 	end 

@@ -62,7 +62,8 @@ function internal_reflush_SecretKey(stgname_bucket)
 		if SecretKey == ngx.null or AccessKey == ngx.null 
 		   or StorageDomain == ngx.null then 
 			ngx.log(ngx.ERR,"Has no key stgname_bucket:",stgname_bucket)
-			return false, "There is no bucket"
+			--return false, "There is no bucket"
+			return false, nil
 		else
 			ngx.shared.storage_key_data:set(ak_key,AccessKey)
 			ngx.shared.storage_key_data:set(sk_key,SecretKey)
@@ -229,11 +230,11 @@ function _M.check_css_flag(self,serinum,objtype)
 	local reflush_time = ngx.shared.css_share_data:get(endtime_key)
 	
 	local now_time = ngx.time()
-	
 	if not css_value or not end_time or now_time - reflush_time > 180 then
 		local opts = {["redis_ip"]=redis_ip,["redis_port"]=redis_port,["timeout"]=3}
 		local red_handler = redis_iresty:new(opts)
-		if not red_handler then			
+		if not red_handler then	
+			ngx.log(ngx.ERR,"[CssCheck]:new redis faild redis ip:",redis_ip," redis port:",redis_port," SeriNum:",serinum,"type:",objtype)		
 			return false,"redis_iresty:new failed"	
 		end
 		local storage_info_key = "<CLOUD_STORAGE>_"..serinum
@@ -242,16 +243,19 @@ function _M.check_css_flag(self,serinum,objtype)
 		if objtype == "PIC" then 
 			res,err = red_handler:hmget(storage_info_key,"PicStgEndTime","PicStgType","PicStgBucket")
 			if err then 
+				ngx.log(ngx.ERR,"[CssCheck]:hmget PIC failed redis ip:",redis_ip," redis port:",redis_port," SeriNum:",serinum," err:",err)		
 				return false, err 
 			end
 		elseif objtype == "VIDEO" then 
 			res,err = red_handler:hmget(storage_info_key,"VideoStgEndTime","VideoStgType","VideoStgBucket")
+			ngx.log(ngx.ERR,"[CssCheck]:hmget VIDEO failed redis ip:",redis_ip," redis port:",redis_port," SeriNum:",serinum," err:",err)		
 			if err then 
 				return false, err 
 			end
 		end 
 		
 		if not res then 
+			ngx.log(ngx.ERR,"[CssCheck]:Not Open redis ip:",redis_ip," redis port:",redis_port," SeriNum:",serinum," type:",objtype)		
 			return true, nil --not buy storage 
 		end 
 		
@@ -262,12 +266,12 @@ function _M.check_css_flag(self,serinum,objtype)
 		if stgbucket == ngx.null  or 
 		   stgtype == ngx.null or 
 		   endtime == ngx.null then 
+			ngx.log(ngx.ERR,"[CssCheck]:Not Open @@@ redis ip:",redis_ip," redis port:",redis_port," SeriNum:",serinum," type:",objtype)			
 			return true, nil  --not buy storage
 		end 
 		
 		--local year,month,day,hour,min,sec = string.match(ngx.utctime(),"(%d+)-(%d+)-(%d+) (%d+):(%d+):(%d+)")
 		--local now_time = os.time({day=day, month=month, year=year, hour=hour, min=min, sec=sec})
-		
 		ngx.shared.css_share_data:set(css_key,stgtype.."_"..stgbucket)
 		ngx.shared.css_share_data:set(endtime_key,endtime)
 		ngx.shared.css_share_data:set(reflush_key,now_time)
@@ -275,11 +279,17 @@ function _M.check_css_flag(self,serinum,objtype)
 		end_time = endtime
 		css_value = stgtype.."_"..stgbucket
 	end 
-		
-	internal_reflush_SecretKey(css_value)
-	if endtime > 0 then 
+
+	local res1, res2 = internal_reflush_SecretKey(css_value)
+	if not res1 and not res2 then 
+		ngx.log(ngx.ERR,"[CssCheck]:Css Invalid Bucket:",analyse_stgbuck," SeriNum:",serinum)
+		return true, nil
+	end
+	
+	if endtime ~= "-1" or endtime > 0 then 
 		local expairs_time = end_time - now_time
 		if expairs_time < 0 then
+			ngx.log(ngx.ERR,"[CssCheck]:Css expirse SeriNum:",serinum," endtime:",end_time)
 			return true, nil 
 		end 
 	end 
@@ -302,9 +312,9 @@ function _M.check_analysis_flag(self,serinum,objtype)
 		return false,"invalid obj type"
 	end
 	
-	local analyse_endtime_key = serinum.."_AIENDTIME_"..endtype
-	local analyse_type_key = serinum.."_AITYPE_"..endtype
-	local analyse_stgbuck_key = serinum.."_AISTGBUC_"..endtype
+	local analyse_endtime_key = serinum.."_AIENDTIME_"..endtype  --人形检测过期时间
+	local analyse_type_key = serinum.."_AITYPE_"..endtype		 --人形检测的类型
+	local analyse_stgbuck_key = serinum.."_AISTGBUC_"..endtype	 --人形检测的bucket信息
 	local reflush_key = serinum.."_CSS_REFLUSH"
 	
 	local analyse_stgbuck = ngx.shared.css_share_data:get(analyse_stgbuck_key)
@@ -314,12 +324,15 @@ function _M.check_analysis_flag(self,serinum,objtype)
 	local now_time = ngx.time()
 	
 	if not analyse_endtime or not analyse_type or 
-	   not analyse_stgbuck or (relush_time and now_time - relush_time > 600) then
+	   not analyse_stgbuck or (relush_time and now_time - relush_time > 600) then 
+		--定期刷新 从人形检测数据库里面获取 bucket endtime 和 pictype信息
 		local opt = {["redis_ip"]=redis_ip,["redis_port"]=redis_port,["timeout"]=3}
 		local red_handler = redis_iresty:new(opt)
 		if not red_handler then
+			ngx.log(ngx.ERR,"[QueryAI]:New redis failed rdis ip:",redis_ip," redis_port:",redis_port," ser:",serinum)
 			return false,"redis_iresty:new failed"
 		end
+		
 		local redis_key = "<AI_ANALYSIS>_"..serinum
 		local res = nil 
 		local err = nil
@@ -330,16 +343,25 @@ function _M.check_analysis_flag(self,serinum,objtype)
 		end
 		
 		if not res and err then
+			ngx.log(ngx.ERR,"[QueryAI]:Get AI Info failed:",redis_ip," redis_port:",redis_port," err:",err," ser:",serinum)
 			return false,err
 		end
 		
 		if not res and not err then
+			ngx.log(ngx.ERR,"[QueryAI]:AI Not Open SeriNumber:",serinum)
 			return true,nil
 		end	
 		
 		analyse_endtime = res[1]
 		analyse_type = res[2]
 		analyse_stgbuck = res[3]
+		
+		--检测是否开通云存储 如果开通了云存储 就是用云存储的bucket信息
+		local ok, css_stgbucket = _M:check_css_flag(serinum,objtype)
+		if ok and css_stgbucket then 
+			ngx.log(ngx.ERR,"[QueryAI]:Use Css Bucket Info SeriNum:",serinum," bucket:",css_stgbucket)
+			analyse_stgbuck = css_stgbucket
+		end 
 	
 		if analyse_endtime == ngx.null or 
 		   analyse_type == ngx.null or 
@@ -352,16 +374,19 @@ function _M.check_analysis_flag(self,serinum,objtype)
 		end
 	end
 	
-	--analyse_endtime < 0 表示永久有效
-	if analyse_endtime ~= ngx.null and analyse_endtime > 0 then
+	--analyse_endtime == -1 表示永久有效
+	if analyse_endtime ~= ngx.null and analyse_endtime ~= "-1" then
 		local expairs_time = analyse_endtime - now_time
 		if expairs_time < 0 then
+			ngx.log(ngx.ERR,"[QueryAI]:AI expirse SeriNum:",serinum," EndTime:",analyse_endtime)
 			return true, nil
 		end
 	end
 	
+	--检查一下storage bucket有没有对应的秘钥
 	local res1, res2 = internal_reflush_SecretKey(analyse_stgbuck)
-	if not res1 then 
+	if not res1 and not res2 then 
+		ngx.log(ngx.ERR,"[QueryAI]:AI Invalid Bucket:",analyse_stgbuck," SeriNum:",serinum)
 		return true, nil
 	end
 	
@@ -376,7 +401,7 @@ function _M.check_abality(self,serinum,objtype,signtype)
 		local res1, res2 = _M:check_css_flag(serinum,objtype)
 		return res1,res2
 	else
-		ngx.log(ngx.ERR,"=======================>type serinum:",serinum," singtype:",signtype) 
+		ngx.log(ngx.ERR,"[CheckAbality]type serinum:",serinum," singtype:",signtype) 
 		return true,"Defalut"
 	end
 end 
@@ -413,6 +438,7 @@ function _M.get_storage_expirs_day(self,serinum,objtype)
 		--如果不存在默认回滚时间
 		return true,default_expires_day
 	end	
+	
 	return true,res
 end
 

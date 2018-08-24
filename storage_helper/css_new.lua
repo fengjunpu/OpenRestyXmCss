@@ -29,7 +29,7 @@ function internal_reflush_SecretKey(stgname_bucket)
         if not res and err then
             return false, err
         end
-		--ngx.log(ngx.ERR,"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@===>:",redis_key)
+		
         local SecretKey = res[1]
         local AccessKey = res[2]
         local StorageDomain = res[3]
@@ -38,7 +38,7 @@ function internal_reflush_SecretKey(stgname_bucket)
 		   AccessKey == ngx.null or 
 		   StorageDomain == ngx.null then
             ngx.log(ngx.ERR,"Has no key stgname_bucket:",stgname_bucket)
-            return false, "There is no bucket"
+            return false, nil
         else
             ngx.shared.storage_key_data:set(ak_key,AccessKey)
             ngx.shared.storage_key_data:set(sk_key,SecretKey)
@@ -48,7 +48,7 @@ function internal_reflush_SecretKey(stgname_bucket)
         end
     end
 
-    return true
+    return true, "sucess ok" 
 end
 
 function _M.handle_new_css(self,jreq)
@@ -57,16 +57,15 @@ function _M.handle_new_css(self,jreq)
 	local storsize = jreq["CssCenter"]["Body"]["SpaceSize"]
 	local stortime = jreq["CssCenter"]["Body"]["StorageTime"]
 	local endtime = jreq["CssCenter"]["Body"]["EndTime"]
-	local starttime = ngx.time()
 	local storbytes = (10*1024)*1024
 	local stortype = jreq["CssCenter"]["Body"]["StorageInfo"]["Type"]
 	local videobucket = jreq["CssCenter"]["Body"]["StorageInfo"]["VideoBucket"]
 	local picbucket = jreq["CssCenter"]["Body"]["StorageInfo"]["PicBucket"]
-	if not stortime or type(stortime) ~= 'number' then
+	if (not videobucket and not picbucket)
+	   or not stortime or type(stortime) ~= 'number' then
 		return false, "invalid args"
 	end
-	ngx.log(ngx.ERR,"@@@=====================> serinum:",serinum," videobucket:",videobucket," picbucket:",picbucket," stortime:",stortime,
-             " endtime:",endtime)	
+				
 	if videobucket then
 		local video_csskey = stortype.."_"..videobucket.."_SK"
 		local video_value = ngx.shared.storage_key_data:get(video_csskey)
@@ -101,11 +100,19 @@ function _M.handle_new_css(self,jreq)
 						 "PicStgSize",storbytes,"PicStgType",stortype,"PicStgBucket",picbucket)
 	end 
 	
+	--把设备序列号写入redis队列以便同步到其他数据域
+	local list_key = "<SYNC_CSTORAGE>_FLAG"
+	red_handler:lpush(list_key,serinum)
+	
 	local res,err = red_handler:commit_pipeline()
 	if not res and err then 
+		ngx.log(ngx.ERR,"[NewCss] commit pipeline failed err:",err," SeriNum:",serinum," VideoBucket:",videobucket," PicBucket:",picbucket)
 		return false,err
 	end 
 	
+	ngx.log(ngx.ERR,"[NewCss]Add Sucess SeriNum:",serinum," VideoBucket:",videobucket,
+				" PicBucket:",picbucket," StoreTime:",stortime," EndTime:",endtime)
+			
 	--update share data
 	local timekey = serinum.."_ENDTIME"
 	if picbucket then
@@ -138,11 +145,14 @@ function _M.handle_new_css(self,jreq)
 end
 
 function _M.handle_new_analyespic(self,jreq)
+	
 	if type(jreq["CssCenter"]["Body"]["Enable"]) == "boolean" and 
 		not jreq["CssCenter"]["Body"]["Enable"] and  
 		jreq["CssCenter"]["Body"]["SerialNumber"] then 
+		
+		--关闭人形检测能力级
 		local serinum = jreq["CssCenter"]["Body"]["SerialNumber"]
-		local opt = {["redis_ip"]=redis_ip,["redis_port"]=redis_port,["timeout"]=3}
+		local opt = {["redis_ip"] = redis_ip,["redis_port"] = redis_port,["timeout"] = 3}
 		local red_handler = redis_iresty:new(opt)
 		if not red_handler then
 			return false,"redis_iresty:new failed"
@@ -180,7 +190,8 @@ function _M.handle_new_analyespic(self,jreq)
 		if storage_pbucket then
 			local stgname_bucket = storage_type.."_"..storage_pbucket
 			local ok,err = internal_reflush_SecretKey(stgname_bucket)
-			if not ok then 
+			if not ok and not err then 
+				ngx.log(ngx.ERR,"[NewAI]Add Pic Ai failed SeriNum:",serinum," Invalid bucket:",stgname_bucket)
 				return false, "invalid pic storage info"
 			end 
 		end 
@@ -189,7 +200,8 @@ function _M.handle_new_analyespic(self,jreq)
 		if storage_vbucket then
 			local stgname_bucket = storage_type.."_"..storage_vbucket
 			local ok,err = internal_reflush_SecretKey(stgname_bucket)
-			if not ok then 
+			if not ok and not err then 
+				ngx.log(ngx.ERR,"[NewAI]Add Video Ai failed SeriNum:",serinum," Invalid bucket:",stgname_bucket)
 				return false, "invalid video storage info"
 			end 
 		end
@@ -209,14 +221,20 @@ function _M.handle_new_analyespic(self,jreq)
 			local storage_key = storage_type.."_"..storage_vbucket
 			red_handler:hmset(redis_key,"AnalysisVidTime",analyse_endtime,"VidStgBuck",storage_key,"AnalysisVidType",analyse_type)
 		end 
-		
+
 		red_handler:hmset(redis_key,"Enable",1) --人形检测开关置为1
+		
+		--写入list以便将人形检测能力同步到其他数据域
+		local list_key = "<SYNC_ANALYSIS>_FLAG"
+		red_handler:lpush(list_key,serinum)
 		
 		local res,err = red_handler:commit_pipeline()
 		if not res and err then 
+			ngx.log(ngx.ERR,"[NewAI]Add failed err:",err," SeriNum:",serinum," PicStgBuck:",storage_key,
+					" AnalysisPicType:",analyse_type," AnalysisPicTime:",analyse_endtime)
 			return false,err
 		end 
-		
+					
 		--更新图片检测内存
 		if storage_pbucket then
 			local analyse_endtime_key = serinum.."_AIENDTIME_PIC"
@@ -239,8 +257,11 @@ function _M.handle_new_analyespic(self,jreq)
 			--开关置为1
 			local analyse_enable_key = serinum.."_AIENABLE_FLAG"
 			ngx.shared.css_share_data:set(analyse_enable_key,1)
+			ngx.log(ngx.ERR,"[NewAI]Add Sucess SeriNum:",serinum," PicStgBuck:",storage_key,
+					" AnalysisPicType:",analyse_type," AnalysisPicTime:",analyse_endtime)
 		end
 	end
+	
 	local resp_str = {}
 	resp_str["CssCenter"] = {}
 	resp_str["CssCenter"]["Header"] = {}
@@ -348,6 +369,7 @@ function _M.handle_add_bucket(self,jreq)
 
 	local res, err = red_handler:hmget(redis_key,"BucketName","StorageName")
 	if not res and err then 
+		ngx.log(ngx.ERR,"[AddBucket]Check Conflict redis failed err:",err)
 		return false, err
 	end	
 
@@ -370,14 +392,25 @@ function _M.handle_add_bucket(self,jreq)
 		ngx.shared.storage_key_data:set(rg_key,RegionName)
 		ngx.shared.storage_key_data:set(reflush_key,RefulushTime)
 		
-		local res, err = red_handler:hmset(redis_key,"BucketName",BucketName,"StorageDomain",DomainName,
+		red_handler:init_pipeline()
+		red_handler:hmset(redis_key,"BucketName",BucketName,"StorageDomain",DomainName,
 											"SecretKey",SecretKey,"AccessKey",AccessKey,
 											"StorageName",StorageName,"RegionName",RegionName)
+
+		--将bucket信息写入队列方便后续同步到其他数据域
+		local list_key = "<SYNC_BUCKETINFO>_FLAG"
+		red_handler:lpush(list_key,StorageName.."_"..BucketName)
+		
+		local res,err = red_handler:commit_pipeline()
 		if not res and err then 
+			ngx.log(ngx.ERR,"[AddBucket]Add Bucket Failed err:",err," BucketName:",BucketName," StorageDomain:",
+						DomainName," StorageName:",StorageName)
 			return false, err
 		end 
 	end 
 	
+	ngx.log(ngx.ERR,"[AddBucket]Add Bucket Sucess BucketName:",BucketName," StorageDomain:",DomainName,
+				" StorageName:",StorageName)
 	local jrsp = {}
 	jrsp["CssCenter"] = {}
 	jrsp["CssCenter"]["Header"] = {}
@@ -389,8 +422,6 @@ function _M.handle_add_bucket(self,jreq)
 	ngx.header.content_length = string.len(resp_str)
 	ngx.say(resp_str)
 	return true	
-end
-
-
+end 
 
 return _M 

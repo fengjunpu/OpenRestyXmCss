@@ -41,12 +41,11 @@ function _M.handle_upload_sign(self,jreq)
 	--ngx.log(ngx.ERR,"======================>check abality:",serinum," objtype:",objtype," SignType:",signType)
 	if not jreq["CssCenter"]["Body"]["StgBucket"] then
 		res,storage_bucket = css_base_iresty:check_abality(serinum,objtype,signType)
-	--	res,storage_bucket = css_base_iresty:check_abality(serinum,objtype,"CloudStorage")
-		if not res then
-			ngx.log(ngx.ERR,"@@@@@@@@@@@@@@@@@@@@ not res serinum",serinum)
+		if not res and storage_bucket then
+			ngx.log(ngx.ERR,"[UploadSign]:check abality failed err:",storage_bucket," Seri:",serinum," Type:",objtype," signTyep:",signType)
 			return false,storage_bucket
-		elseif not storage_bucket then
-			ngx.log(ngx.ERR,"@@@@@@@@@@@======> not open serinum:",serinum," objtype:",objtype," signType:",signType)
+		elseif res and not storage_bucket then
+			ngx.log(ngx.ERR,"[UploadSign]:check abality not buy Seri:",serinum," Type:",objtype," signTyep:",signType)
 			local jrsp = {}
 			jrsp["CssCenter"] = {}
 			jrsp["CssCenter"]["Header"] = {}
@@ -101,8 +100,10 @@ function _M.handle_upload_sign(self,jreq)
 	header["Date"] = ostime
 	local signature = css_base_iresty:make_signature("PUT",header,objname,storage_bucket)
 	if not signature then 
+		ngx.log(ngx.ERR,"[UploadSign]:Get Sign failed bucket:",storage_bucket," Seri:",serinum," Type:",objtype," signTyep:",signType)
 		return false,"get sign failed"
 	end 
+	
 	local domain = ngx.shared.storage_key_data:get(storage_bucket.."_DM")
 	local csskey,cssbucket = string.match(storage_bucket,"(%w+)_(.*)")
 	--组织应答包
@@ -121,7 +122,7 @@ function _M.handle_upload_sign(self,jreq)
 	end
 	
 	if format_day then
-        	jrsp["CssCenter"]["Body"]["ExpiredDay"] = format_day
+        jrsp["CssCenter"]["Body"]["ExpiredDay"] = format_day
 	end
 
 	jrsp["CssCenter"]["Body"]["StorageName"] = csskey
@@ -155,10 +156,12 @@ function _M.handle_multi_ts_sign(self,jreq)
 	local offset = jreq["CssCenter"]["Body"]["OffsetNum"]
 	local objtype = jreq["CssCenter"]["Body"]["ObjType"]
 		
-	local res,storage_bucket = css_base_iresty:check_css_flag(serinum,objtype)
-	if not res then
+	--local res,storage_bucket = css_base_iresty:check_css_flag(serinum,objtype)
+	local res,storage_bucket = css_base_iresty:check_abality(serinum,objtype,"CloudStorage")
+	if not res and storage_bucket then
+		ngx.log(ngx.ERR,"[MultSign]:check abality failed err:",storage_bucket," SeriNum:",serinum)
 		return false,storage_bucket
-	elseif not storage_bucket then
+	elseif res and not storage_bucket then
 		local jrsp = {}
 		jrsp["CssCenter"] = {}
 		jrsp["CssCenter"]["Header"] = {}
@@ -170,6 +173,7 @@ function _M.handle_multi_ts_sign(self,jreq)
 		local resp_str = cjson.encode(jrsp)
 		ngx.header.content_length = string.len(resp_str)
 		ngx.say(resp_str)
+		ngx.log(ngx.ERR,"[MultSign]:Video Not Open SeriNum:",serinum)
 		return true
 	end
 	
@@ -259,7 +263,8 @@ function _M.handle_download_sign(self,jreq)
 	header["Date"] = ostime
     local objtype = jreq["CssCenter"]["Body"]["ObjType"]
 	
-	--开始构造签名
+	--开始构造签名 
+	--是否还有存在的必要
 	local res = nil 
 	local storage_bucket = nil
 	if objtype ~= "PIC" then 
@@ -287,12 +292,12 @@ function _M.handle_download_sign(self,jreq)
 	local height = jreq["CssCenter"]["Body"]["Height"]
 	local clienttype = jreq["CssCenter"]["Body"]["ClientType"] 
 	
-	for _,value in ipairs(jreq["CssCenter"]["Body"]["ObjInfo"]) do
+	for _,value in ipairs(jreq["CssCenter"]["Body"]["ObjInfo"]) do 
 		local subrequest = nil
 		if value.StorageBucket then 
 			storage_bucket = value.StorageBucket
-		end
-
+		end 
+		
 		local url = value.ObjName 		
 		if clienttype and objtype == "PIC" then 
 			local alarmid = string.match(value.ObjName,"%w+_(%w+).jpeg")
@@ -314,8 +319,8 @@ function _M.handle_download_sign(self,jreq)
 			--ngx.log(ngx.ERR,"select sql:",select_sql)
 			local res,err = handledb:update_sql(select_sql)
 			if not res and err then
-                		ngx.log(ngx.ERR,"sql err:",err)
-		                return false,err
+				ngx.log(ngx.ERR,"[DownLoadSign]:Select Sql failed err:",err," SeriNum:",serinum)
+				return false,err
 			end
 			
 			for _,v in pairs(res) do
