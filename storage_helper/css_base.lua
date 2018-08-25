@@ -286,7 +286,7 @@ function _M.check_css_flag(self,serinum,objtype)
 		return true, nil
 	end
 	
-	if endtime ~= "-1" or endtime > 0 then 
+	if end_time - 0 > 0 then
 		local expairs_time = end_time - now_time
 		if expairs_time < 0 then
 			ngx.log(ngx.ERR,"[CssCheck]:Css expirse SeriNum:",serinum," endtime:",end_time)
@@ -375,7 +375,7 @@ function _M.check_analysis_flag(self,serinum,objtype)
 	end
 	
 	--analyse_endtime == -1 表示永久有效
-	if analyse_endtime ~= ngx.null and analyse_endtime ~= "-1" then
+	if analyse_endtime ~= ngx.null and (analyse_endtime - 0) > 0 then
 		local expairs_time = analyse_endtime - now_time
 		if expairs_time < 0 then
 			ngx.log(ngx.ERR,"[QueryAI]:AI expirse SeriNum:",serinum," EndTime:",analyse_endtime)
