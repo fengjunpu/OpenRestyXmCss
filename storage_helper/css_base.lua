@@ -7,8 +7,8 @@ local _M = {}
 _M._VERSION = '1.0'
 
 local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
-local redis_port = 5128
-local reids_bucket_port = 5128
+local redis_port = 5134
+local reids_bucket_port = 5134
 
 function sha256(str)
     local sha256 = resty_sha265:new()

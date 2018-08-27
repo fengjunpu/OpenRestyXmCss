@@ -9,7 +9,7 @@ local NOT_SUPPORT = 1001
 local NOT_OPEN = 1002
 
 local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
-local redis_port = 5128
+local redis_port = 5134
 
 --[[
 local cfg_redis_ip = "120.92.117.227"

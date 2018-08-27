@@ -20,33 +20,41 @@ local wanip_iresty = require("common_lua.wanip_iresty")
 local local_redis_ip = "127.0.0.1"
 local foreign_redis_ip = "127.0.0.1"
 
-local css_redis_port = 5128
-
+local css_redis_port = 5134
 local sync_num = 100
-local css_interval = 5
+local css_pic_interval = 5
+local css_vid_interval = 5
 local ai_interval = 5
 local bucket_interval = 5
 
 
-local function do_sync_auth (redis_port,server_type)
+local function do_sync_auth(redis_port,server_type)
 	--读取auth list
 	local KEY = nil 
 	local Prefix = nil 
-	if server_type == "CSS" then 
-		KEY = "<SYNC_CSTORAGE>_FLAG"
+	local args = {}
+	if server_type == "CSS_PIC" then 
+		KEY = "<SYNC_PIC_CSS>_FLAG"
 		Prefix = "<CLOUD_STORAGE>_"
+		args = {"PicStgTime","PicStgEndTime","PicStgSize","PicStgType","PicStgBucket"}
+	elseif server_type == "CSS_VIDEO" then
+		KEY = "<SYNC_VIDEO_CSS>_FLAG"
+		Prefix = "<CLOUD_STORAGE>_"
+		args = {"VideoStgTime","VideoStgEndTime","VideoStgSize","VideoStgType","VideoStgBucket"}
 	elseif server_type == "AI" then 
 		KEY = "<SYNC_ANALYSIS>_FLAG"
 		Prefix = "<AI_ANALYSIS>_"
+		args = {"AnalysisPicTime","PicStgBuck","AnalysisPicType","Pedestrian","Enable"}
 	elseif server_type == "BUCKET" then 
 		KEY = "<SYNC_BUCKETINFO>_FLAG"
 		Prefix = "<StorageKey>_"
+		args = {"BucketName","StorageDomain","SecretKey","AccessKey","StorageName","RegionName"}
 	else 
 		return false 
 	end 
 	
 	--连接数据库
-	local opt = {["redis_ip"] = local_redis_ip,["redis_port"]=redis_port,["timeout"] = 12}
+	local opt = {["redis_ip"] = local_redis_ip,["redis_port"] = redis_port,["timeout"] = 10}
 	local local_handler = redis_iresty:new(opt)
 	if not local_handler then
 		ngx.log(ngx.ERR,"redis_iresty:new failed")
@@ -60,8 +68,8 @@ local function do_sync_auth (redis_port,server_type)
 		return false,"local handler get key length failed"
 	end
 	
-	local list_start = 0;
-	ngx.log(ngx.INFO,"@@@@@@@@@length = ",key_length," server_type = ",server_type);
+	local list_start = 0
+	ngx.log(ngx.INFO,"[dosync]length = ",key_length," server_type = ",server_type);
 	if key_length > sync_num then
 		--把list的游标移动到倒数第sync_num个的位置（为了把最老的同步了）
 		list_start = key_length - sync_num	
@@ -75,53 +83,112 @@ local function do_sync_auth (redis_port,server_type)
 			ngx.log(ngx.ERR,"lrange local redis failed ",err," server_type: ",server_type)
 		end	
 		return false
-	else
-		local_handler:init_pipeline()
-		for _,value in pairs(value_list) do
-			local_handler:hgetall(Prefix..value)
-		end	
-		
-		local res_status,err = local_handler:commit_pipeline()
-		if not res_status or tableutils.table_is_empty(res_status) then
-			ngx.log(ngx.ERR,"get server_type: ",server_type," authcode failed ",err)
-			return
-		else
-			for i,value in pairs(res_status) do
-				read_auth[value_list[i]] = value;
-				ngx.log(ngx.INFO,"serinum: ",value_list[i]," authcode: ",value)
-			end	
-		end 
-	end
+	end 
 	
+	--开始获取redis数据
+	local_handler:init_pipeline()
+	for _,value in pairs(value_list) do
+		local key = Prefix..value
+		for _, arg in pairs(args) do
+			local_handler:hget(key,arg)
+		end
+	end	
+	
+	local res_status,err = local_handler:commit_pipeline()
+	
+	if not res_status or next(res_status) == nil then		--没有就返回
+		ngx.log(ngx.ERR,"get server_type: ",server_type," authcode failed ",err)
+		return false 
+	end 
+	
+	local redis_info = {}
+	local args_len = #args
+	local status_len = (#value_list)*(#args) --总长度
+	local key_index = 1	
+	for n = 1, status_len, args_len do		--步长为检查的数据长度
+		local m_key = value_list[key_index]
+		key_index = key_index + 1
+		local dev_flag = 0		--是否查到redis数据
+		local on_arry = {}
+		for i = 1, args_len do 
+			if res_status[n+i-1] and res_status[n+i-1] ~= ngx.null then 
+				on_arry[args[i]] = res_status[n+i-1]
+				dev_flag = 1
+			end
+			
+			if dev_flag == 1 then 	--如果有信息需要同步就先放入json队列里面
+				on_arry["syncflag"] = m_key
+				redis_info[#redis_info + 1] = on_arry
+			end 
+		end 
+	end 
+
+	if #redis_info == 0 then  --如果队列里面没有数据说明没有什么需要同步的就返回
+		return false 
+	end 
 	
 	--开始同步数据
-	local flag = 0
 	local mstart_pos = 0	
 	local counter = 0
+	local sync_sucess_flag = 0
 	while true do
-		counter = counter+1
+		counter = counter + 1
 		_,end_pos,line = string.find(foreign_redis_ip,"(%w+.%w+.%w+.%w+)",mstart_pos)		
 		if not end_pos or counter > 100 then 
 			break
 		end	
+		
 		if line ~= nil then
-			local red_handel,err = redis_iresty:new({["redis_ip"]=line,["redis_port"]=redis_port,["timeout"] = 5})
+			local red_handel,err = redis_iresty:new({["redis_ip"] = line,["redis_port"] = redis_port,["timeout"] = 10})
 			if not red_handel then
 				ngx.log(ngx.ERR,"redis_iresty new red_handel failed",err," server_type = ",server_type)
 			else
 				red_handel:init_pipeline();
-				for key,value in pairs(read_auth) do
-					red_handel:hmset("<AUTHCODE>_"..key,"Read",value,"Write",key)
-				end
-				local mstatus,err = red_handel:commit_pipeline();
-				if not mstatus or tableutils.table_is_empty(mstatus) then
-					ngx.log(ngx.ERR,"sync server_type: ",server_type," failed, ip = ",line," err:",err)
-					flag = 1
+				--开始写入数据
+				for _, syncinfo in pairs(redis_info) do 
+					local obj_key = Prefix..syncinfo["syncflag"] 
+					if server_type == "CSS_PIC" then 
+						--{"PicStgTime","PicStgEndTime","PicStgSize","PicStgType","PicStgBucket"}
+						red_handel:hmset(obj_key,"PicStgTime",syncinfo["PicStgTime"],
+											"PicStgEndTime",syncinfo["PicStgEndTime"],
+											"PicStgSize",syncinfo["PicStgSize"],
+											"PicStgType",syncinfo["PicStgType"],
+											"PicStgBucket",syncinfo["PicStgBucket"])
+					elseif server_type == "CSS_VIDEO" then
+						--{"VideoStgTime","VideoStgEndTime","VideoStgSize","VideoStgType","VideoStgBucket"}
+						red_handel:hmset(obj_key,"VideoStgTime",syncinfo["VideoStgTime"],
+											"VideoStgEndTime",syncinfo["VideoStgEndTime"],
+											"VideoStgSize",syncinfo["VideoStgSize"],
+											"VideoStgType",syncinfo["VideoStgType"],
+											"VideoStgBucket",syncinfo["VideoStgBucket"])
+					elseif server_type == "AI" then 
+						--{"AnalysisPicTime","PicStgBuck","AnalysisPicType","Pedestrian","Enable"}
+						red_handel:hmset(obj_key,"AnalysisPicTime",syncinfo["AnalysisPicTime"],
+											"PicStgBuck",syncinfo["PicStgBuck"],
+											"AnalysisPicType",syncinfo["AnalysisPicType"],
+											"Pedestrian",syncinfo["Pedestrian"],
+											"Enable",syncinfo["Enable"])
+					elseif server_type == "BUCKET" then 
+						--{"BucketName","StorageDomain","SecretKey","AccessKey","StorageName","RegionName"}
+						red_handel:hmset(obj_key,"BucketName",syncinfo["BucketName"],
+											"StorageDomain",syncinfo["StorageDomain"],
+											"SecretKey",syncinfo["SecretKey"],
+											"AccessKey",syncinfo["AccessKey"],
+											"StorageName",syncinfo["StorageName"],
+											"RegionName",syncinfo["RegionName"])
+					end 
+				end 
+				
+				local res_status,err = red_handel:commit_pipeline()  --开始同步
+				if not res_status or #res_status == 0 or err then  --同步失败
+					sync_sucess_flag = 0
+					ngx.log(ngx.ERR,"hmset failed=============> err:",err," server_type:",server_type," redis ip:",line)
 				else
-					ngx.log(ngx.INFO,"sync server_type: ",server_type," sucess, ip = ",line)
+					sync_sucess_flag = 1
 				end
 			end
 		end
+		
 		if end_pos == nil then
 			break
 		end
@@ -129,25 +196,30 @@ local function do_sync_auth (redis_port,server_type)
 	end
 
 	--删除本地list中已经同步的设备号
-	if flag == 0 then
+	if sync_sucess_flag == 0 then
 		local_handler:init_pipeline()
-		for _,value in pairs(serinum_list) do
-			local_handler:lrem("<SYNC>_AUTHCODE",1,value)
+		for _,value in pairs(redis_info) do
+			local obj_key = value["syncflag"] 
+			local_handler:lrem(KEY,1,obj_key)
 		end
 		local del_status,err = local_handler:commit_pipeline()
 		if not del_status or tableutils.table_is_empty(del_status) then
 			ngx.log(ngx.ERR,"lrem server_type: ",server_type," failed: ",err)
 		end	
-		if server_type == "CSS" then
-			css_interval = 5
+		if server_type == "CSS_PIC" then
+			css_pic_interval = 5
+		elseif server_type == "CSS_PIC" then
+			css_vid_interval = 5
 		elseif server_type == "AI" then
 			ai_interval = 5
 		elseif server_type == "BUCKET" then
 			bucket_interval = 5
 		end
 	else 
-		if server_type == "CSS" then
-			css_interval = 2
+		if server_type == "CSS_PIC" then
+			css_pic_interval = 2
+		elseif server_type == "CSS_PIC" then
+			css_vid_interval = 2
 		elseif server_type == "AI" then
 			ai_interval = 2
 		elseif server_type == "BUCKET" then
@@ -159,21 +231,21 @@ end
 --加载对应的名字空间的IP地址的配置
 local function load_css_redis_ip_addr()
 	--从共享内存中获取本地redis ip和其他数据域redis ip
-	local_redis_ip = ngx.shared.shared_data:get("myconfig_css_redis4status_ip")
+	local_redis_ip = ngx.shared.shared_data:get("myconfig_css_local_redis4status_ip")
 	foreign_redis_ip = ngx.shared.shared_data:get("myconfig_css_foreign_redis4status_ip")
 	
 	if not local_redis_ip or not foreign_redis_ip then 
 	--<1>获取iplist
-		local redis_ip_list = ngx.shared.shared_data:get("myconfig_redis4css_ip_list")
+		local redis_ip_list = ngx.shared.shared_data:get("myconfig_redis4status_ip_list")
 		if not redis_ip_list then
 			local cmd = "python get_redis_ip_list.py"
 			local s = io.popen(cmd)
 			redis_ip_list = s:read("*all")
 			if string.len(redis_ip_list) < 6 then
-					ngx.log(ngx.ERR,"get_redis_ip_list.py failed ")
-					return false
+				ngx.log(ngx.ERR,"get_redis_ip_list.py failed ")
+				return false
 			end
-			ngx.shared.shared_data:set("myconfig_redis4css_ip_list", redis_ip_list)
+			ngx.shared.shared_data:set("myconfig_redis4status_ip_list", redis_ip_list)
 			ngx.log(ngx.INFO,"get_redis_ip_list:",redis_ip_list)
 		end
 		
@@ -212,7 +284,7 @@ local function load_css_redis_ip_addr()
 			return false 
 		end
 
-		ngx.shared.shared_data:set("myconfig_css_redis4status_ip",local_redis_ip)
+		ngx.shared.shared_data:set("myconfig_css_local_redis4status_ip",local_redis_ip)
 		ngx.shared.shared_data:set("myconfig_css_foreign_redis4status_ip",foreign_redis_ip)
 	end  
 	
@@ -220,14 +292,25 @@ local function load_css_redis_ip_addr()
 end
 
 --启动css同步定时器
-local css_handler = nil
-css_handler = function ()
+local css_pic_handler = nil
+css_pic_handler = function ()
 	--同步授权码
-	do_sync_auth(css_redis_port,"CSS")
+	do_sync_auth(css_redis_port,"CSS_PIC")
 	--重启定时器
-	local ok, err = ngx.timer.at(pms_interval,css_handler)
+	local ok, err = ngx.timer.at(css_pic_interval,css_pic_handler)
 	if not ok then
-		ngx.log(ngx.ERR, "failed to startup reclaim css_handler timer...", err)
+		ngx.log(ngx.ERR, "failed to startup css_pic_handler timer...", err)
+	end
+end
+
+local css_vid_handler = nil
+css_vid_handler = function ()
+	--同步授权码
+	do_sync_auth(css_redis_port,"CSS_VIDEO")
+	--重启定时器
+	local ok, err = ngx.timer.at(css_vid_interval,css_vid_handler)
+	if not ok then
+		ngx.log(ngx.ERR, "failed to startup rcss_vid_handler timer...", err)
 	end
 end
 
@@ -237,9 +320,9 @@ ai_handler = function ()
 	--同步授权码
 	do_sync_auth(css_redis_port,"AI")
 	--重启定时器
-	local ok, err = ngx.timer.at(tps_interval,ai_handler)
+	local ok, err = ngx.timer.at(ai_interval,ai_handler)
 	if not ok then
-		ngx.log(ngx.ERR, "failed to startup reclaim ai_handler timer...", err)
+		ngx.log(ngx.ERR, "failed to startup ai_handler timer...", err)
 	end
 end
 
@@ -247,11 +330,11 @@ end
 local bucket_handler = nil
 bucket_handler = function ()
 	--同步授权码
-	do_sync_auth(dss_redis_port,"BUCKET")
+	do_sync_auth(css_redis_port,"BUCKET")
 	--重启定时器
-	local ok, err = ngx.timer.at(css_redis_port,bucket_handler)
+	local ok, err = ngx.timer.at(bucket_interval,bucket_handler)
 	if not ok then
-		ngx.log(ngx.ERR, "failed to startup reclaim bucket_handler timer...", err)
+		ngx.log(ngx.ERR, "failed to startup bucket_handler timer...", err)
 	end
 end
 
@@ -259,15 +342,19 @@ end
 --保证只有一个运行实例
 local ok = ngx.shared.shared_data:add("init_flag",1)
 if ok then
-	print("startup heartbeart timer")
 	local ret = load_css_redis_ip_addr()
 	if not ret then
 		ngx.log(ngx.ERR,"load css ip failed,need restart")
 	else
-		--css
-		local ok, err = ngx.timer.at(css_interval,css_handler)
+		--css_pic
+		local ok, err = ngx.timer.at(css_pic_interval,css_pic_handler)
 		if not ok then
-			ngx.log(ngx.ERR, "failed to startup sync css_handler timer...", err)
+			ngx.log(ngx.ERR, "failed to startup sync css_pic_handler timer...", err)
+		end
+		--css_video
+		local ok, err = ngx.timer.at(css_vid_interval,css_vid_handler)
+		if not ok then
+			ngx.log(ngx.ERR, "failed to startup sync css_video_handler timer...", err)
 		end
 		--ai
 		local ok, err = ngx.timer.at(ai_interval,ai_handler)

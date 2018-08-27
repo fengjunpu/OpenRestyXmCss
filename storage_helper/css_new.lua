@@ -4,8 +4,8 @@ local _M = {}
 _M._VERSION = '1.0'
 
 local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
-local redis_port = 5128
-local reids_bucket_port = 5128
+local redis_port = 5134
+local reids_bucket_port = 5134
 
 function internal_reflush_SecretKey(stgname_bucket)
     local ak_key =  stgname_bucket.."_AK"
@@ -93,16 +93,18 @@ function _M.handle_new_css(self,jreq)
 	if videobucket then
 		red_handler:hmset(redis_key,"VideoStgTime",stortime,"VideoStgEndTime",endtime,
 						 "VideoStgSize",storbytes,"VideoStgType",stortype,"VideoStgBucket",videobucket)
+		--把设备序列号写入redis队列以便同步到其他数据域				
+		local list_key = "<SYNC_VIDEO_CSS>_FLAG"
+		red_handler:lpush(list_key,serinum)
 	end 
 	
 	if 	picbucket then
 		red_handler:hmset(redis_key,"PicStgTime",stortime,"PicStgEndTime",endtime,
 						 "PicStgSize",storbytes,"PicStgType",stortype,"PicStgBucket",picbucket)
+		--把设备序列号写入redis队列以便同步到其他数据域	
+		local list_key = "<SYNC_PIC_CSS>_FLAG"
+		red_handler:lpush(list_key,serinum)
 	end 
-	
-	--把设备序列号写入redis队列以便同步到其他数据域
-	local list_key = "<SYNC_CSTORAGE>_FLAG"
-	red_handler:lpush(list_key,serinum)
 	
 	local res,err = red_handler:commit_pipeline()
 	if not res and err then 
