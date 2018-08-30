@@ -44,7 +44,8 @@ local function do_sync_auth(redis_port,server_type)
 	elseif server_type == "AI" then 
 		KEY = "<SYNC_ANALYSIS>_FLAG"
 		Prefix = "<AI_ANALYSIS>_"
-		args = {"AnalysisPicTime","PicStgBuck","AnalysisPicType","Pedestrian","Enable"}
+		args = {"AnalysisPicTime","PicStgBuck","AnalysisPicType","Enable"}
+
 	elseif server_type == "BUCKET" then 
 		KEY = "<SYNC_BUCKETINFO>_FLAG"
 		Prefix = "<StorageKey>_"
@@ -166,7 +167,6 @@ local function do_sync_auth(redis_port,server_type)
 						red_handel:hmset(obj_key,"AnalysisPicTime",syncinfo["AnalysisPicTime"],
 											"PicStgBuck",syncinfo["PicStgBuck"],
 											"AnalysisPicType",syncinfo["AnalysisPicType"],
-											"Pedestrian",syncinfo["Pedestrian"],
 											"Enable",syncinfo["Enable"])
 					elseif server_type == "BUCKET" then 
 						--{"BucketName","StorageDomain","SecretKey","AccessKey","StorageName","RegionName"}
@@ -196,7 +196,7 @@ local function do_sync_auth(redis_port,server_type)
 	end
 
 	--删除本地list中已经同步的设备号
-	if sync_sucess_flag == 0 then
+	if sync_sucess_flag == 1 then
 		local_handler:init_pipeline()
 		for _,value in pairs(redis_info) do
 			local obj_key = value["syncflag"] 
@@ -340,12 +340,13 @@ end
 
 --程序入口(启动时只执行一次)
 --保证只有一个运行实例
-local ok = ngx.shared.shared_data:add("init_flag",1)
+local ok = ngx.shared.shared_data:add("sync_css_init_flag",1)
 if ok then
 	local ret = load_css_redis_ip_addr()
 	if not ret then
 		ngx.log(ngx.ERR,"load css ip failed,need restart")
 	else
+		ngx.log(ngx.ERR,"===================================>foreign:",foreign_redis_ip," local:",local_redis_ip)
 		--css_pic
 		local ok, err = ngx.timer.at(css_pic_interval,css_pic_handler)
 		if not ok then
@@ -369,4 +370,5 @@ if ok then
 	end
 else
 	print("do not start timer")
+	ngx.log(ngx.ERR,"start falied @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
 end
