@@ -37,7 +37,7 @@ local function delete_expirse_from_mysql(deltype)
 	end
 	
 	ngx.log(ngx.ERR,"[delete]: sql:",sql)
-	local res,err = handledb:update_sql(insert_sql)
+	local res,err = handledb:update_sql(sql)
 	if not res then
 		ngx.log(ngx.ERR,"[delete]: delete msql failed err:",err," sql:",sql)
 		return false,err
