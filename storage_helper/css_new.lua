@@ -67,17 +67,17 @@ function _M.handle_new_css(self,jreq)
 	end
 				
 	if videobucket then
-		local video_csskey = stortype.."_"..videobucket.."_SK"
-		local video_value = ngx.shared.storage_key_data:get(video_csskey)
-		if not video_value then
+		local video_csskey = stortype.."_"..videobucket
+		local ok, res = internal_reflush_SecretKey(video_csskey)
+		if not ok and not res then
 			return false, "Video Bucket has No Key"	
 		end
 	end
 
 	if picbucket then
-		local pic_csskey = stortype.."_"..picbucket.."_SK"
-		local pic_value = ngx.shared.storage_key_data:get(pic_csskey)
-		if not pic_value then
+		local pic_csskey = stortype.."_"..picbucket
+		local ok, res = internal_reflush_SecretKey(pic_csskey)
+		if not ok and not res then
 			return false, "Pic Bucket has No Key"
 		end
 	end
