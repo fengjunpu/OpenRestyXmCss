@@ -28,6 +28,8 @@ function internal_reflush_SecretKey(stgname_bucket)
         local res,err = red_handler:hmget(redis_key,"SecretKey","AccessKey","StorageDomain")
         if not res and err then
             return false, err
+	elseif not res then
+	    return false, nil
         end
 		
         local SecretKey = res[1]
