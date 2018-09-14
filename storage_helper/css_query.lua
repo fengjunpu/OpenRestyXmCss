@@ -157,7 +157,7 @@ function _M.handle_query_css(self,jreq)
 	resp_str["CssCenter"] = {}
 	resp_str["CssCenter"]["Body"] = {}
 	resp_str["CssCenter"]["Header"] = {}
-    resp_str["CssCenter"]["Body"]["PicUseAge"] = picuseage
+    	resp_str["CssCenter"]["Body"]["PicUseAge"] = picuseage
 	resp_str["CssCenter"]["Body"]["VideoUseAge"] = videouseage
 	resp_str["CssCenter"]["Body"]["TotalUseAge"] = picuseage + videouseage
 	resp_str["CssCenter"]["Body"]["TotalSapce"] = totalspace

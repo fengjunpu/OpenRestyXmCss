@@ -77,8 +77,8 @@ function _M.handle_upload_sign(self,jreq)
 			--ExpiredDay
 			objname = format_day.."_"..objname
 			local ok, expirsday = css_base_iresty:get_storage_expirs_day(serinum,objtype)
-			if not ok then 
-				expirsday = 30
+			if not ok or not expirsday then 
+				expirsday = 3
 			end
 			format_day = string.format("%03d",expirsday)
 			objname = format_day.."_"..objname
@@ -187,8 +187,8 @@ function _M.handle_multi_ts_sign(self,jreq)
 			rewrite_alarm_id = alarmid.."_"..serverid
 		end
 		local ok, expirsday = css_base_iresty:get_storage_expirs_day(serinum,objtype)
-		if not ok then 
-			expirsday = 10
+		if not ok or not expirsday then 
+			expirsday = 3
 		end
 		format_day = string.format("%03d",expirsday)
 	end
