@@ -1,6 +1,7 @@
 local css_base_iresty = require("storage_helper.css_base")
 local cjson = require("cjson.safe")
 local mysql_iresty = require("storage_helper.mysql_iresty")
+local redis_iresty = require("common_lua.redis_iresty")
 
 --[[
 local mysql_ip = "117.78.36.130"
@@ -12,11 +13,20 @@ local mysql_user = "root"
 local mysql_pwd = "123456@XiongMai"
 local mysql_db = "xmcloud_css"
 
+local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
+local redis_port = 5141
+
 local _M = {}      
 _M._VERSION = '1.0'
 
 --[[
 上传图片或者视频时的获取的签名
+--]]
+
+--[[
+local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
+local redis_port = 5134
+local reids_bucket_port = 5134
 --]]
 function _M.handle_upload_sign(self,jreq)
 	if not jreq["CssCenter"]["Body"]["ObjType"] or not jreq["CssCenter"]["Body"]["ObjName"] then
@@ -174,6 +184,13 @@ function _M.handle_multi_ts_sign(self,jreq)
 		ngx.header.content_length = string.len(resp_str)
 		ngx.say(resp_str)
 		ngx.log(ngx.ERR,"[MultSign]:Video Not Open SeriNum:",serinum)
+		
+		local cfg_css_key = "CFG::CSS:"..serinum
+		local opts = {["redis_ip"]=redis_ip,["redis_port"]=redis_port,["timeout"]=3}
+                local red_handler = redis_iresty:new(opts)
+		if red_handler then 
+			red_handler:hset(cfg_css_key,"RecordEvent","NONE")
+		end 
 		return true
 	end
 	

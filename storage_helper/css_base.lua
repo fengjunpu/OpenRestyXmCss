@@ -248,8 +248,8 @@ function _M.check_css_flag(self,serinum,objtype)
 			end
 		elseif objtype == "VIDEO" then 
 			res,err = red_handler:hmget(storage_info_key,"VideoStgEndTime","VideoStgType","VideoStgBucket")
-			ngx.log(ngx.ERR,"[CssCheck]:hmget VIDEO failed redis ip:",redis_ip," redis port:",redis_port," SeriNum:",serinum," err:",err)		
-			if err then 
+			if err then
+				ngx.log(ngx.ERR,"[CssCheck]:hmget VIDEO failed redis ip:",redis_ip," redis port:",redis_port," SeriNum:",serinum," err:",err)		 
 				return false, err 
 			end
 		end 

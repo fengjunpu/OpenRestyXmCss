@@ -98,6 +98,8 @@ function _M.handle_new_css(self,jreq)
 		--把设备序列号写入redis队列以便同步到其他数据域				
 		local list_key = "<SYNC_VIDEO_CSS>_FLAG"
 		red_handler:lpush(list_key,serinum)
+		local sign_key = "<DEL_VIDEO_CSS>_FLAG"
+		red_handler:lpush(sign_key,serinum)
 	end 
 	
 	if 	picbucket then
@@ -105,7 +107,7 @@ function _M.handle_new_css(self,jreq)
 						 "PicStgSize",storbytes,"PicStgType",stortype,"PicStgBucket",picbucket)
 		--把设备序列号写入redis队列以便同步到其他数据域	
 		local list_key = "<SYNC_PIC_CSS>_FLAG"
-		red_handler:lpush(list_key,serinum)
+		red_handler:lpush(list_key,serinum)		
 	end 
 	
 	local res,err = red_handler:commit_pipeline()
@@ -133,6 +135,7 @@ function _M.handle_new_css(self,jreq)
 		local videovalue = stortype.."_"..videobucket
 		ngx.shared.css_share_data:set(videokey,videovalue)
 		ngx.shared.css_share_data:set(timekey,timevalue)
+		--del debug
 	end
 		
 	local resp_str = {}

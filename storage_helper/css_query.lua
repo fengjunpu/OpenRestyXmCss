@@ -11,11 +11,6 @@ local NOT_OPEN = 1002
 local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
 local redis_port = 5134
 
---[[
-local cfg_redis_ip = "120.92.117.227"
-local cfg_redis_port = 5141
---]]
-
 function internal_send_resp_string(rspstatus,message_type,error_string)
 	if not message_type or type(message_type) ~= "string" then
 		ngx.log(ngx.ERR, "send_resp_string:type(message_type) ~= string", type(message_type))
@@ -57,7 +52,7 @@ function _M.handle_dev_query_css(self,jreq)
 	
 	local msg_type = "MSG_CSS_DEV_QUERY_RSP"								  --设备查询是否支持云存储
 	if jreq["CssCenter"]["Header"]["MessageType"] == "MSG_CSS_QUERY_REQ" then --APP查询是否支持云存储
-			msg_type = "MSG_CSS_QUERY_RSP"
+		msg_type = "MSG_CSS_QUERY_RSP"
 	end
 	
 	local res,storage_bucket = css_base_iresty:check_abality(serinum,stgtype,"CloudStorage") --查一下支不支持
@@ -107,9 +102,13 @@ function _M.handle_query_css(self,jreq)
 	if not res and err then 
 		return false, err
 	end 
-	local videostgname = res[1]
-	local picstgname = res[2]
-	
+	local videostgname = nil
+	local picstgname = nil
+	if not res then
+		videostgname = res[1]
+		picstgname = res[2]
+	end
+		
 --[[
 	local starttm = jreq["CssCenter"]["Body"]["StarTime"]
 	local endtm = jreq["CssCenter"]["Body"]["EndTime"]
@@ -162,10 +161,10 @@ function _M.handle_query_css(self,jreq)
 	resp_str["CssCenter"]["Body"]["TotalUseAge"] = picuseage + videouseage
 	resp_str["CssCenter"]["Body"]["TotalSapce"] = totalspace
 	--resp_str["CssCenter"]["Body"]["StorageName"] = storagename 
-	if picstgname ~= ngx.null then 
+	if picstgname and picstgname ~= ngx.null then 
 		resp_str["CssCenter"]["Body"]["PicStorageName"] = picstgname
 	end
-	if videostgname ~= ngx.null then 
+	if videostgname and videostgname ~= ngx.null then 
 		resp_str["CssCenter"]["Body"]["VideoStorageName"] = picstgname
 	end
 

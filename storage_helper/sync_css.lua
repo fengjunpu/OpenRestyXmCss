@@ -21,12 +21,119 @@ local local_redis_ip = "127.0.0.1"
 local foreign_redis_ip = "127.0.0.1"
 
 local css_redis_port = 5134
+local cfg_redis_port = 5141
 local sync_num = 100
 local css_pic_interval = 5
 local css_vid_interval = 5
 local ai_interval = 5
 local bucket_interval = 5
+local css_del_interval = 5
 
+
+local function do_del_css()
+	local KEY = "<DEL_VIDEO_CSS>_FLAG"
+	local redis_port = 5134
+	local opt = {["redis_ip"] = local_redis_ip,["redis_port"] = redis_port,["timeout"] = 10}
+	local local_handler = redis_iresty:new(opt)
+	if not local_handler then
+		ngx.log(ngx.ERR,"redis_iresty:new failed")
+		return false,"redis_iresty:new failed"
+	end
+
+	local key_length = local_handler:llen(KEY)
+	if key_length == nil then
+		ngx.log(ngx.ERR,"local handler get key length failed,server_type = ",server_type)
+		return false,"local handler get key length failed"
+	end
+
+	local list_start = 0
+	ngx.log(ngx.INFO,"[dodel]length = ",key_length," server_type = ",server_type);
+	if key_length > sync_num then
+		list_start = key_length - sync_num
+	end
+
+	local read_auth = {}
+	local value_list,err = local_handler:lrange(KEY,list_start,-1);
+	if not value_list then
+		if err then
+			ngx.log(ngx.ERR,"lrange local redis failed ",err," server_type: ",server_type)
+		end
+		return false
+	end
+	
+	local cfg_redis_port = 5141
+	--¿¿¿¿¿¿¿¿
+	local local_cfg_opt = {["redis_ip"] = local_redis_ip,["redis_port"] = cfg_redis_port,["timeout"] = 10}
+	local local_cfg_handler = redis_iresty:new(local_cfg_opt)
+	if not local_cfg_handler then 
+		ngx.log(ngx.ERR,"[dodel]new cfg redis failed")
+		return false, "redis new cfg failed"
+	end 
+	local_cfg_handler:init_pipeline()
+	for _, seri in pairs(value_list) do
+		local css_cfg_key = "CFG::CSS:"..seri
+		local_cfg_handler:del(css_cfg_key)	
+	end		
+	local res_sta, err = local_cfg_handler:commit_pipeline()
+	if not res_sta then 
+		ngx.log(ngx.ERR,"[dodel]del local cfg redis failed err:",err)
+		return false,"[dodel]del local cfg redis failed"
+	end 
+	
+	--¿¿¿¿¿¿¿¿¿¿¿¿
+	local mstart_pos = 0
+        local counter = 0
+        local sync_sucess_flag = 0
+	local del_res_flag = 0  --¿¿¿¿¿¿¿¿¿¿¿¿¿¿
+        while true do
+                counter = counter + 1
+                _,end_pos,line = string.find(foreign_redis_ip,"(%w+.%w+.%w+.%w+)",mstart_pos)
+                if not end_pos or counter > 100 then
+                        break
+                end
+
+		if line ~= nil then
+                        local foregin_red_handel,err = redis_iresty:new({["redis_ip"] = line,["redis_port"] = cfg_redis_port,["timeout"] = 10})
+                        if not foregin_red_handel then
+                                ngx.log(ngx.ERR,"redis_iresty new red_handel failed",err," server_type = ",server_type)
+				sync_sucess_flag = 0
+				break
+                        else
+                                foregin_red_handel:init_pipeline();
+				for _, seri in pairs(value_list) do
+			                local css_cfg_key = "CFG::CSS:"..seri
+			                foregin_red_handel:del(css_cfg_key)
+			        end
+				
+				local res_sta, err = foregin_red_handel:commit_pipeline()
+        			if not res_sta then
+			                ngx.log(ngx.ERR,"[dodel]del foregin cfg redis failed err:",err)
+					sync_sucess_flag = 0
+			                break
+				else
+					sync_sucess_flag = 1
+			        end
+			end
+		end
+                mstart_pos = end_pos + 1
+	end
+	--¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿¿
+	if del_res_flag == 1 then
+		local_handler:init_pipeline()
+		for _,value in pairs(value_list) do
+			local_handler:lrem(KEY,1,value)
+		end
+		local del_status,err = local_handler:commit_pipeline()
+		if not del_status or tableutils.table_is_empty(del_status) then
+			ngx.log(ngx.ERR,"lrem server_type: del css cfg  failed: ",err)
+			css_del_interval = 2
+		else 
+			css_del_interval = 5
+		end
+	else
+		css_del_interval = 2
+	end
+end 
 
 local function do_sync_auth(redis_port,server_type)
 	--¶ÁÈ¡auth list
@@ -338,6 +445,15 @@ bucket_handler = function ()
 	end
 end
 
+local del_css_handler = nil
+del_css_handler = function ()
+	do_del_css();
+	local ok, err = ngx.timer.at(css_del_interval,del_css_handler)
+        if not ok then
+                ngx.log(ngx.ERR, "failed to startup del_css_handler timer...", err)
+        end
+end
+
 --³ÌÐòÈë¿Ú(Æô¶¯Ê±Ö»Ö´ÐÐÒ»´Î)
 --±£Ö¤Ö»ÓÐÒ»¸öÔËÐÐÊµÀý
 local ok = ngx.shared.shared_data:add("sync_css_init_flag",1)
@@ -367,6 +483,11 @@ if ok then
 		if not ok then
 			ngx.log(ngx.ERR, "failed to startup sync bucket_handler timer...", err)
 		end
+		--del css
+		local ok, err = ngx.timer.at(css_del_interval,del_css_handler)
+		if not ok  then
+			ngx.log(ngx.ERR, "failed to startup del css timer...", err)
+		end 
 	end
 else
 	print("do not start timer")
