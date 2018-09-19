@@ -76,7 +76,7 @@ function _M.handle_upload_video_res(self,jreq)
 	--local utc_time = os.time({day=day, month=month, year=year, hour=hour, min=min, sec=sec})
 	local utc_time = ngx.time()
 	local ok, expirsday = css_base_iresty:get_storage_expirs_day(serinum,"VIDEO")
-	if not ok then 
+	if not ok or not expirsday then 
 		expirsday = 3
 	end 
 	
