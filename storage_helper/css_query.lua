@@ -66,6 +66,7 @@ function _M.handle_dev_query_css(self,jreq)
 	end 
 	
 	if msg_type == "MSG_CSS_DEV_QUERY_RSP"	then
+		--ngx.log(ngx.ERR,"[QueryCss]:Open Sucess SeriNum:",serinum," type:",stgtype)
 		internal_send_resp_string(200,"MSG_CSS_DEV_QUERY_RSP","Sucess OK")
 	end
 

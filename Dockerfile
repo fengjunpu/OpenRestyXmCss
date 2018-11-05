@@ -1,5 +1,5 @@
 #Dockerfile
-FROM daocloud.io/geyijun/open_resty_common:v0.41
+FROM daocloud.io/geyijun/open_resty_common:v0.44
 MAINTAINER geyijun<geyijun@xiongmaitech.com>
 
 #采用supervisor来管理多任务

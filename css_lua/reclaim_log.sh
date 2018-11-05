@@ -39,7 +39,7 @@ function rotate_log()
 	kill -USR1 ${nginxpid}
 	
 	#只保留最近3天的日志文件
-	find ./logs_bak/* -name "*.log" -mtime 3 -type f -exec rm -rf {} \; > /dev/null 2>&1
+	find ./logs_bak/* -name "*.log" -mtime 2 -type f -exec rm -rf {} \; > /dev/null 2>&1
 }
 
 echo "Reclaim Nginx Log is Start!"

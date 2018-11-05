@@ -9,6 +9,7 @@ _M._VERSION = '1.0'
 local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
 local redis_port = 5134
 local reids_bucket_port = 5134
+local reids_pms_port = 5131
 
 function sha256(str)
     local sha256 = resty_sha265:new()
@@ -440,6 +441,36 @@ function _M.get_storage_expirs_day(self,serinum,objtype)
 	end	
 	
 	return true,res
+end
+
+--[[
+查询设备是否被订阅
+--]]
+function _M.get_subscribe_info(self,serinum)
+	if not serinum then 
+		return false
+	end
+	
+	--连接数据库
+	local opts = {["redis_ip"] = redis_ip,["redis_port"] = reids_pms_port,["timeout"]=3}
+	local red_handler = redis_iresty:new(opts)
+	if not red_handler then
+		return true
+	end
+	
+	--检查是否订阅
+	local sub_key = "<APP_TOKEN>_"..serinum
+	local res, err = red_handler:exists(sub_key)
+	if err or not res then 
+		ngx.log(ngx.ERR,"[checksubscribe]: check subscribe failed err:",err)
+		return true 
+	end
+
+	if tonumber(res) == 1 then 
+		return true 
+	else 
+		return false
+	end
 end
 
 return _M

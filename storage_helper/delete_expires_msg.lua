@@ -8,8 +8,8 @@ local mysql_pwd = "123456@XiongMai"
 local mysql_db = "xmcloud_css"
 
 --删除消息 和 视频的间隔
-local delete_msg_interval = 600
-local delete_vid_interval = 600
+local delete_msg_interval = 60
+local delete_vid_interval = 60
 
 --开始删除
 local function delete_expirse_from_mysql(deltype) 

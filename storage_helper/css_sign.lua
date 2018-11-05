@@ -44,7 +44,15 @@ function _M.handle_upload_sign(self,jreq)
 	if jreq["CssCenter"]["Body"]["SignType"] then 
 		signType = jreq["CssCenter"]["Body"]["SignType"]
 	end 
-		
+	
+	--如果是图片,先检查一下是否有订阅
+	if objtype == "PIC" and objtype ~= "VideoPic" then 
+		local res = css_base_iresty:get_subscribe_info(serinum)
+		if not res then 	--设备没有订阅
+			return false, "subscribe token not exists"
+		end
+	end 
+	
 	--检查是否开通了云存储功能
 	local storage_bucket = nil 
 	local res = nil
@@ -85,7 +93,10 @@ function _M.handle_upload_sign(self,jreq)
 			serverid = ngx.time()
 			alarmid = alarmid.."_"..serverid
 			--ExpiredDay
-			objname = format_day.."_"..objname
+			--objname = format_day.."_"..objname
+			objname = serinum.."_"..alarmid..endname
+			ngx.log(ngx.ERR,"[signvideo]:rewrite sign objname: ",objname)
+			
 			local ok, expirsday = css_base_iresty:get_storage_expirs_day(serinum,objtype)
 			if not ok or not expirsday then 
 				expirsday = 3
@@ -95,7 +106,7 @@ function _M.handle_upload_sign(self,jreq)
 		end
 	elseif objtype == 'PIC' then
 		--重写objname
-		if not string.match(objname,"%w+_%w+_%w+_%w+-%w+.jpeg") then 
+		if not string.match(objname,"%w+_%w+_%w+_%w+.jpeg") then
 			local ok, expirsday = css_base_iresty:get_storage_expirs_day(serinum,objtype)
 			if not ok or not expirsday then 
 				expirsday = 3
@@ -184,13 +195,14 @@ function _M.handle_multi_ts_sign(self,jreq)
 		ngx.header.content_length = string.len(resp_str)
 		ngx.say(resp_str)
 		ngx.log(ngx.ERR,"[MultSign]:Video Not Open SeriNum:",serinum)
-		
+		--[[		
 		local cfg_css_key = "CFG::CSS:"..serinum
 		local opts = {["redis_ip"]=redis_ip,["redis_port"]=redis_port,["timeout"]=3}
                 local red_handler = redis_iresty:new(opts)
 		if red_handler then 
 			red_handler:hset(cfg_css_key,"RecordEvent","NONE")
 		end 
+		--]]
 		return true
 	end
 	
