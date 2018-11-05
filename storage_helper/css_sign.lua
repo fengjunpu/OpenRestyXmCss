@@ -46,7 +46,7 @@ function _M.handle_upload_sign(self,jreq)
 	end 
 	
 	--如果是图片,先检查一下是否有订阅
-	if objtype == "PIC" and objtype ~= "VideoPic" then 
+	if objtype == "PIC" and signType ~= "VideoPic" then 
 		local res = css_base_iresty:get_subscribe_info(serinum)
 		if not res then 	--设备没有订阅
 			return false, "subscribe token not exists"
@@ -106,7 +106,7 @@ function _M.handle_upload_sign(self,jreq)
 		end
 	elseif objtype == 'PIC' then
 		--重写objname
-		if not string.match(objname,"%w+_%w+_%w+_%w+.jpeg") then
+		if not string.match(objname,"%w+_%w+_%w+_%w+-%w+.jpeg") then
 			local ok, expirsday = css_base_iresty:get_storage_expirs_day(serinum,objtype)
 			if not ok or not expirsday then 
 				expirsday = 3
