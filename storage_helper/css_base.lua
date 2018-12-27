@@ -232,6 +232,7 @@ function _M.check_preferential_strategy(self, serinum)
 		local lasttime, bucketinfo, expirseday = string.match(value,"(.*):(.*):(.*)")
 		if not lasttime or not bucketinfo or not expirseday then 
 			ngx.shared.dev_product_data:delete(key)
+			ngx.log(ngx.ERR,"invalid dsct key:",value)
 			return true, nil
 		end
 		
