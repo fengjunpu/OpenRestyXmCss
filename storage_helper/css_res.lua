@@ -33,6 +33,7 @@ function _M.handle_upload_pic_res(self,jreq)
 		upsize = 0
 	end	
 
+	--local insert_sql = "update alarm_msg_tb set ObjName = \'"..picname.."\',StgFlag = \'"..stgname.."\',StorageFlag = "..flag..",PicSize = "..upsize.." where SeriNum = \""..serinum.."\" and AlarmId = \""..alarmid.."\"".." limit 1"
 	local insert_sql = "update alarm_msg_tb set ObjName = \'"..picname.."\',StgFlag = \'"..stgname.."\',StorageFlag = "..flag..",PicSize = "..upsize.." where SeriNum = \""..serinum.."\" and AlarmId = \""..alarmid.."\"".." limit 1"
 	local res,err = handledb:update_sql(insert_sql)
 	if not res then
