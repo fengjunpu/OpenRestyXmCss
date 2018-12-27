@@ -178,6 +178,7 @@ function _M.handle_multi_ts_sign(self,jreq)
 	local objtype = jreq["CssCenter"]["Body"]["ObjType"]
 		
 	--local res,storage_bucket = css_base_iresty:check_css_flag(serinum,objtype)
+	--检查是支持视频云存储
 	local res,storage_bucket = css_base_iresty:check_abality(serinum,objtype,"CloudStorage")
 	if not res and storage_bucket then
 		ngx.log(ngx.ERR,"[MultSign]:check abality failed err:",storage_bucket," SeriNum:",serinum)
@@ -195,14 +196,6 @@ function _M.handle_multi_ts_sign(self,jreq)
 		ngx.header.content_length = string.len(resp_str)
 		ngx.say(resp_str)
 		ngx.log(ngx.ERR,"[MultSign]:Video Not Open SeriNum:",serinum)
-		--[[		
-		local cfg_css_key = "CFG::CSS:"..serinum
-		local opts = {["redis_ip"]=redis_ip,["redis_port"]=redis_port,["timeout"]=3}
-                local red_handler = redis_iresty:new(opts)
-		if red_handler then 
-			red_handler:hset(cfg_css_key,"RecordEvent","NONE")
-		end 
-		--]]
 		return true
 	end
 	

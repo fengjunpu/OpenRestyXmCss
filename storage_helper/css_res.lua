@@ -91,6 +91,13 @@ function _M.handle_upload_video_res(self,jreq)
 			insert_sql = insert_sql..",StgFlag=\'"..storage_bucket.."\'"
 		end	
 	end
+	
+	--开始时间向前移动10s  结束时间向后移动10s
+	local start_sec = ngx.time(starttime) - 10
+	local stop_sec = ngx.time(stoptime) + 10
+	starttime = ngx.utctime(start_sec)
+	stoptime = ngx.utctime(stop_sec)
+	
 	local update_sql = "update alarm_msg_tb set StorageFlag = 2 where SeriNum = \'"..serinum.."\' and AlarmTime >= \'"..starttime.."\' and AlarmTime <= \'"..stoptime.."\'"
 	--ngx.log(ngx.ERR,"insert sql:",insert_sql)
 	handledb:update_sql(insert_sql)

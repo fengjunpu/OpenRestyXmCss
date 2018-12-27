@@ -10,6 +10,7 @@ local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
 local redis_port = 5134
 local reids_bucket_port = 5134
 local reids_pms_port = 5131
+local redis_cfg_port = 5141
 
 function sha256(str)
     local sha256 = resty_sha265:new()
@@ -213,6 +214,121 @@ function _M.make_signature_aws_v4(method,headers,objname,csskey)
 	return Auth, request_auth
 end
 
+--[[
+这个接口用来查询优惠策略
+运作原理: 1.通过设备序列号到cfg数据库查到设备的型号
+		  2.通过设备型号查或者OEM信息查到相关优惠策略
+--]]
+function _M.check_preferential_strategy(self, serinum)
+	--检查内存中是否有优惠政策
+	--优惠政策在共享内存中存储的格式为
+	--flushTime:bucket_info:expirst_day
+	--刷新时间:视频bucket_info名称:视频存储天数
+	--key为:DSCT_serinum 
+	local key = "DSCT_" .. serinum
+	local value = ngx.shared.dev_product_data:get(key)
+	local now_time = ngx.time()
+	if value then 
+		local lasttime, bucketinfo, expirseday = string.match(value,"(.*):(.*):(.*)")
+		if not lasttime or not bucketinfo or not expirseday then 
+			ngx.shared.dev_product_data:delete(key)
+			return true, nil
+		end
+		
+		local flushtime = now_time - lasttime
+		if (tonumber(expirseday) > 0 and flushtime <= 600 ) then  
+			ngx.log(ngx.ERR,"[dsctdebug] support normal video seri:", serinum," buckinfo:",bucketinfo," expirday:",expirseday)
+			return true, bucketinfo, expirseday
+		end
+
+		if (tonumber(expirseday) <= 0 and flushtime < 180) then 
+			ngx.log(ngx.ERR,"[dsctdebug] not support normal video serinumber:",serinum)
+			return true, nil
+		end
+	end 
+	
+	--连接数据库 查询设备版本信息以及固件信息
+	local opts = {["redis_ip"]=redis_ip,["redis_port"]=redis_cfg_port,["timeout"]=3}
+	local red_handler = redis_iresty:new(opts)
+	if not red_handler then	
+		return false,"redis_iresty:new failed"	
+	end
+	
+	--从cfg里面获取productid 和 版本信息
+	local res, err = red_handler:hmget(serinum,"ProductID", "OtherInfo")
+	if err then 
+		ngx.log(ngx.ERR,"[dsctdebug]get nothing or get redis err seri:",serinum," err:",err)
+		return false, err
+	end 
+	
+	if not res or res == ngx.null or err then 
+		return true, nil
+	end
+	
+	--剥离出oem信息
+	local ProductID = res[1]
+	local OtherInfo = res[2]
+	local VersionID = nil
+	if OtherInfo and OtherInfo ~= ngx.null then 
+		local _,position =  string.find(OtherInfo,'%w+.%w+.%w+.%w',0)
+		if position ~= nil then 
+			local TempID = string.sub(OtherInfo, position, position+2)
+			if TempID ~= '000' then
+				VersionID = TempID
+			end
+		end
+	end 
+	
+	--使用pipe技术 获取到设备必要信息
+	red_handler:init_pipeline()
+	local key_serinum = nil 
+	local key_product = nil
+	local key_oem = nil 
+	
+	local chek_list = {}
+	--获取video bucket信息
+	if serinum then 
+		key_serinum = "CFG::PMS:" .. serinum 
+		red_handler:hget(key_serinum, "CssVideoBucket")
+		table.insert(chek_list,key_serinum)
+	end 
+	
+	if VersionID then 
+		key_oem = "CFG::PMS:" .. VersionID  
+		red_handler:hget(key_oem, "CssVideoBucket")
+		table.insert(chek_list,key_oem)
+	end
+	
+	if ProductID and ProductID ~= ngx.null then 
+		key_product = "CFG::PMS:" .. ProductID  
+		red_handler:hget(key_product, "CssVideoBucket")
+		table.insert(chek_list,key_product)
+	end
+
+	local res_status,err = red_handler:commit_pipeline()
+	if err then 
+		return false, err 
+	end 
+	
+	if not res_status or next(res_status)==nil then
+		local preferentia_value = now_time .. ":0:0" 
+		ngx.shared.dev_product_data:set(key, preferentia_value)
+		ngx.log(ngx.ERR,"commit err seri:",serinum," err:",err)
+		return true, nil
+	end 	
+	
+	for k, v in ipairs(chek_list) do 
+		if res_status[k] ~= nil and (type(res_status[k]) == 'string') then
+			local bucketinfo = res_status[k]
+			local expirstday = 3
+			local preferentia_value = now_time .. ":".. bucketinfo ..":" .. expirstday 
+			ngx.shared.dev_product_data:set(key, preferentia_value)
+			return true, bucketinfo, expirstday
+		end
+	end
+	
+	return true, nil
+end 
 
 --[[
 check_css_flag: 检查设备云存储（图片/视频）是否开通或者是否过期
@@ -400,6 +516,9 @@ function _M.check_abality(self,serinum,objtype,signtype)
 		return res1,res2
 	elseif signtype == "CloudStorage" then 
 		local res1, res2 = _M:check_css_flag(serinum,objtype)
+		if res1 and not res2 and objtype == "VIDEO" then 
+			res1, res2 = _M:check_preferential_strategy(serinum)
+		end
 		return res1,res2
 	else
 		ngx.log(ngx.ERR,"[CheckAbality]type serinum:",serinum," singtype:",signtype) 
@@ -465,7 +584,8 @@ function _M.get_subscribe_info(self,serinum)
 		ngx.log(ngx.ERR,"[checksubscribe]: check subscribe failed err:",err)
 		return true 
 	end
-
+	
+	--是否订阅
 	if tonumber(res) == 1 then 
 		return true 
 	else 
