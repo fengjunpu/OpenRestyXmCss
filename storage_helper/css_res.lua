@@ -93,11 +93,18 @@ function _M.handle_upload_video_res(self,jreq)
 		end	
 	end
 	
-	--开始时间向前移动10s  结束时间向后移动10s
-	local start_sec = ngx.time(starttime) - 10
-	local stop_sec = ngx.time(stoptime) + 5
-	
-	local update_sql = "update alarm_msg_tb set StorageFlag = 2 where SeriNum = \'"..serinum.."\' and UtcTime >= \'"..start_sec.."\' and UtcTime <= \'"..stop_sec.."\'"
+	local start_year, start_mon, start_day, start_hour, start_min, start_sec = string.match(starttime,"(%d+)-(%d+)-(%d+) (%d+):(%d+):(%d+)")	
+	local stop_year, stop_mon, stop_day, stop_hour, stop_min, stop_sec = string.match(stoptime,"(%d+)-(%d+)-(%d+) (%d+):(%d+):(%d+)")
+	if start_year and start_sec and stop_year and stop_sec then 
+		local start = {year = start_year, month = start_mon, day = start_day, hour = start_hour, min = start_min, sec = start_sec}
+		local stop = {year = stop_year, month = stop_mon, day = stop_day, hour = stop_hour, min = stop_min, sec = stop_sec}
+		local start_sec = os.time(start) - 10
+		local stop_sec = os.time(stop) + 5
+		starttime = os.date("%Y-%m-%d %H:%M:%S", start_sec)
+		stoptime = os.date("%Y-%m-%d %H:%M:%S", stop_sec)
+	end		
+
+	local update_sql = "update alarm_msg_tb set StorageFlag = 2 where SeriNum = \'"..serinum.."\' and AlarmTime >= \'"..starttime.."\' and AlarmTime <= \'"..stoptime.."\'"
 	--ngx.log(ngx.ERR,"insert sql:",insert_sql)
 	handledb:update_sql(insert_sql)
 	handledb:update_sql(update_sql)
