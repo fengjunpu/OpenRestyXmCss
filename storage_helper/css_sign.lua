@@ -290,7 +290,8 @@ function _M.handle_download_sign(self,jreq)
 	local res = nil 
 	local storage_bucket = nil
 	if objtype ~= "PIC" then 
-		res,storage_bucket = css_base_iresty:check_css_flag(serinum,objtype)
+		--res,storage_bucket = css_base_iresty:check_css_flag(serinum,objtype)
+		res,storage_bucket = css_base_iresty:check_abality(serinum, objtype, "CloudStorage")
 		if not res then
 			return false,storage_bucket
 		elseif res and not storage_bucket then
