@@ -147,26 +147,27 @@ function _M.make_signature_aws_v4(self, method,headers,objname,csskey)
 	local ak = ngx.shared.storage_key_data:get(csskey.."_AK")  --Access Key
 	local sk = ngx.shared.storage_key_data:get(csskey.."_SK")  --Secrity Key
 	local regioninfo = ngx.shared.storage_key_data:get(csskey.."_RG") --Bucket Region Info
-	if not ak or not sk or not regioninfo then 
+	local domaininfo = ngx.shared.storage_key_data:get(csskey.."_DM") --domain name
+	if not ak or not sk or not regioninfo or not domaininfo then 
 		internal_reflush_SecretKey(csskey)
 		ak = ngx.shared.storage_key_data:get(csskey.."_AK")
 		sk = ngx.shared.storage_key_data:get(csskey.."_SK") 
 		regioninfo = ngx.shared.storage_key_data:get(csskey.."_RG")
-		if not ak or not sk or not regioninfo then
+		domaininfo = ngx.shared.storage_key_data:get(csskey.."_DM")
+		if not ak or not sk or not regioninfo or not domaininfo then
 			return false, csskey.."has not ak or sk"
 		end 
 	end
 	
 	--规定死三个参数原因是省去了字典排序的麻烦但同时也带来了灵活性的损失
 	if type(headers) ~= "table" or 
-	   not headers["host"] or 
 	   not headers["x-amz-content-sha256"] or 
 	   not headers["x-amz-date"]  then 
 		return false, "invaild headers key"
 	end 
 		
 	local canonical_headers_table = {}
-	table.insert(canonical_headers_table,"host:"..headers["host"])
+	table.insert(canonical_headers_table,"host:"..domaininfo)
 	table.insert(canonical_headers_table,"x-amz-content-sha256:"..headers["x-amz-content-sha256"])
 	table.insert(canonical_headers_table,"x-amz-date:"..headers["x-amz-date"])
 	local canonical_headers = table.concat(canonical_headers_table,'\n').."\n"

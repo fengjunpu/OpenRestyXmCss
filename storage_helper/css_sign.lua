@@ -115,18 +115,36 @@ function _M.handle_upload_sign(self,jreq)
 			objname = format_day.."_"..objname
 		end 
 	end
-	
+
 	local header = {} 
-	local ostime = os.date("!%a, %d %b %Y %H:%M:%S GMT")
-	header["Date"] = ostime
-	local signature = css_base_iresty:make_signature("PUT",header,objname,storage_bucket)
+	local ostime = nil 
+	local signature = nil
+	local auth = nil
+	local version4 = 0
+
+	if storage_bucket == "S3_s3-eu-nor-01" or 
+	   storage_bucket == "S3_s3-eu-vid-01" or
+	   storage_bucket == "S3_s3-eu-pic-01" then
+		ostime = os.date("%Y%m%dT%H%M%SZ")
+		header["host"] = "as3-eu-nor-01.s3.amazonws.com"
+        header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
+       	header["x-amz-date"] = ostime
+		signature, auth = css_base_iresty:make_signature_aws_v4("PUT",header,objname,storage_bucket)
+		version4 = 1
+	else
+		ostime = os.date("!%a, %d %b %Y %H:%M:%S GMT")
+		header["Date"] = ostime
+		signature = css_base_iresty:make_signature("PUT",header,objname,storage_bucket)
+	end	
+	
 	if not signature then 
 		ngx.log(ngx.ERR,"[UploadSign]:Get Sign failed bucket:",storage_bucket," Seri:",serinum," Type:",objtype," signTyep:",signType)
 		return false,"get sign failed"
 	end 
-	
+
+
 	local domain = ngx.shared.storage_key_data:get(storage_bucket.."_DM")
-	local csskey,cssbucket = string.match(storage_bucket,"(%w+)_(.*)")
+	local csskey, cssbucket = string.match(storage_bucket,"(%w+)_(.*)")
 	--组织应答包
 	local jrsp = {}
 	jrsp["CssCenter"] = {}
@@ -137,23 +155,26 @@ function _M.handle_upload_sign(self,jreq)
 	jrsp["CssCenter"]["Header"]["ErrorString"] = "Sucess OK"
 	jrsp["CssCenter"]["Body"] = {}
 	jrsp["CssCenter"]["Body"]["Url"] = "/"..objname
-
 	if objtype == 'VIDEO' then
 		jrsp["CssCenter"]["Body"]["ReWriteAlarmId"] = alarmid
 	end
-	
 	if format_day then
-        jrsp["CssCenter"]["Body"]["ExpiredDay"] = format_day
+        	jrsp["CssCenter"]["Body"]["ExpiredDay"] = format_day
 	end
-
 	jrsp["CssCenter"]["Body"]["StorageName"] = csskey
 	jrsp["CssCenter"]["Body"]["Method"] = "PUT"
 	jrsp["CssCenter"]["Body"]["Host"] = domain
 	jrsp["CssCenter"]["Body"]["Bucket"] = cssbucket
-	
 	jrsp["CssCenter"]["Body"]["RestFull"] = {}
-	jrsp["CssCenter"]["Body"]["RestFull"]["Date"] = header["Date"]
-	jrsp["CssCenter"]["Body"]["RestFull"]["Authorization"] = signature
+
+	if version4 == 0 then
+		jrsp["CssCenter"]["Body"]["RestFull"]["Date"] = header["Date"]
+		jrsp["CssCenter"]["Body"]["RestFull"]["Authorization"] = signature
+	else
+		jrsp["CssCenter"]["Body"]["RestFull"]["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
+        jrsp["CssCenter"]["Body"]["RestFull"]["x-amz-date"] = ostime
+        jrsp["CssCenter"]["Body"]["RestFull"]["Authorization"] = auth
+	end
 	
 	local resp_str = cjson.encode(jrsp)
 	ngx.header.content_length = string.len(resp_str)
@@ -217,8 +238,21 @@ function _M.handle_multi_ts_sign(self,jreq)
 	
 	--开始为每一个obj制作签名
 	local header = {} 
-	local ostime = os.date("!%a, %d %b %Y %H:%M:%S GMT")
-	header["Date"] = ostime 
+	local ostime = nil
+	local version4 = 0
+	local signature = nil
+	local auth = nil
+	if storage_bucket == "S3_s3-eu-nor-01" or 
+	   storage_bucket == "S3_s3-eu-vid-01" or
+	   storage_bucket == "S3_s3-eu-pic-01" then
+		ostime = os.date("%Y%m%dT%H%M%SZ")
+        header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
+       	header["x-amz-date"] = ostime
+		version4 = 1
+	else
+		ostime = os.date("!%a, %d %b %Y %H:%M:%S GMT")
+		header["Date"] = ostime
+	end	
 		
 	local rsp_sign_info = {}
 	local objList = jreq["CssCenter"]["Body"]["ObjList"]
@@ -232,13 +266,20 @@ function _M.handle_multi_ts_sign(self,jreq)
 				objname = format_day.."_"..serinum.."_"..rewrite_alarm_id..endname
 			end
 			
-			local signature = css_base_iresty:make_signature("PUT",header,objname,storage_bucket)
 			local temp_sign_info = {}
 			temp_sign_info["Url"] = "/"..objname
 			temp_sign_info["IndexNum"] = objinfo["IndexNum"]
 			temp_sign_info["RestFull"] = {}
-			temp_sign_info["RestFull"]["Date"] = ostime
-			temp_sign_info["RestFull"]["Authorization"] = signature
+			if version4 == 0 then 
+				signature = css_base_iresty:make_signature("PUT",header,objname,storage_bucket)
+				temp_sign_info["RestFull"]["Date"] = ostime
+				temp_sign_info["RestFull"]["Authorization"] = signature
+			else 
+				signature, auth = css_base_iresty:make_signature_aws_v4("PUT",header,objname,storage_bucket)
+				temp_sign_info["RestFull"]["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
+        		temp_sign_info["RestFull"]["x-amz-date"] = ostime
+        		temp_sign_info["RestFull"]["Authorization"] = auth
+			end 
 			rsp_sign_info[#rsp_sign_info + 1] = temp_sign_info
 		end
 	end
@@ -281,8 +322,20 @@ function _M.handle_download_sign(self,jreq)
 	end
 
 	local header = {} 
-	local ostime = os.date("!%a, %d %b %Y %H:%M:%S GMT")
-	header["Date"] = ostime
+	local ostime = nil
+	local version4 = 0
+	if storage_bucket == "S3_s3-eu-nor-01" or 
+	   storage_bucket == "S3_s3-eu-vid-01" or
+	   storage_bucket == "S3_s3-eu-pic-01" then
+		ostime = os.date("%Y%m%dT%H%M%SZ")
+        header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
+       	header["x-amz-date"] = ostime
+		version4 = 1
+	else
+		ostime = os.date("!%a, %d %b %Y %H:%M:%S GMT")
+		header["Date"] = ostime
+	end	
+    
     local objtype = jreq["CssCenter"]["Body"]["ObjType"]
 	
 	--开始构造签名 
@@ -396,12 +449,19 @@ function _M.handle_download_sign(self,jreq)
 				signle_map["URL"] = "/"..url
 				all_map[#all_map + 1] = signle_map
 			else 
-				local signature = css_base_iresty:make_signature("GET",header,url,storage_bucket)
 				signle_map["Host"] = ngx.shared.storage_key_data:get(storage_bucket.."_DM")
 				signle_map["URL"] = "/"..url
 				signle_map["ReqHeader"] = {}
-				signle_map["ReqHeader"]["Date"] = ostime
-				signle_map["ReqHeader"]["Authorization"] = signature
+				if version4 == 0 then 
+					local signature = css_base_iresty:make_signature("GET",header,url,storage_bucket)
+					signle_map["ReqHeader"]["Date"] = ostime
+					signle_map["ReqHeader"]["Authorization"] = signature
+				else 
+					local signature, auth = css_base_iresty:make_signature_aws_v4("GET",header,url,storage_bucket)
+					signle_map["ReqHeader"]["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
+	        		signle_map["ReqHeader"]["x-amz-date"] = ostime
+	        		signle_map["ReqHeader"]["Authorization"] = auth
+				end 
 				all_map[#all_map + 1] = signle_map
 			end
 		end
