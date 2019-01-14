@@ -23,7 +23,7 @@ function hmac_sha256(sk, str)
     local hm, err = resty_hmac:new(sk)
     local signature, hmac_signature, hex_signature = hm:generate_signature("sha256",str)
     if not signature then
-        ngx.log("failed to sign message: ", err)
+        ngx.log(ngx.ERR, "failed to sign message: ", hmac_signature)
         return false, err
     end
     return signature, hmac_signature, hex_signature
@@ -138,7 +138,7 @@ header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
 header["x-amz-date"] = 20180731T085319Z
 header["Authorization"] = sign
 --]]
-function _M.make_signature_aws_v4(method,headers,objname,csskey)
+function _M.make_signature_aws_v4(self, method,headers,objname,csskey)
 	local signed_headers = "host;x-amz-content-sha256;x-amz-date"
 	local sign_type = "AWS4-HMAC-SHA256"
 	local storage_name = "s3"
@@ -201,7 +201,7 @@ function _M.make_signature_aws_v4(method,headers,objname,csskey)
 --=============================================½×¶ÎÈý==========================	
 	local datekey_sec = "AWS4"..sk
 	local _, hmac_datekey, hex_dateregionkey = hmac_sha256(datekey_sec,socp_date)
-	local _, hmac_dateregionkey, hex_dateregionkey = hmac_sha256(hmac_datekey,region)
+	local _, hmac_dateregionkey, hex_dateregionkey = hmac_sha256(hmac_datekey,regioninfo)
 	local _, hmac_dateregionservicekey,hex_dateregionservicekey = hmac_sha256(hmac_dateregionkey,storage_name)
 	local _, hmac_signingkey,hex_signingkey = hmac_sha256(hmac_dateregionservicekey,"aws4_request")
 	local _, hmac_sign, hex_signingkey = hmac_sha256(hmac_signingkey,stringtosign_str)
