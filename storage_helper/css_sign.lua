@@ -318,22 +318,8 @@ function _M.handle_download_sign(self,jreq)
 	if type(jreq["CssCenter"]["Body"]["ObjInfo"]) ~= "table" or not jreq["CssCenter"]["Body"]["ObjType"] then
 		return false, "invalid request"	
 	end
-
-	local header = {} 
-	local ostime = nil
-	local version4 = 0
-	if storage_bucket == "S3_s3-eu-nor-01" or 
-	   storage_bucket == "S3_s3-eu-pic-01" then
-		ostime = os.date("%Y%m%dT%H%M%SZ")
-        header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
-       	header["x-amz-date"] = ostime
-		version4 = 1
-	else
-		ostime = os.date("!%a, %d %b %Y %H:%M:%S GMT")
-		header["Date"] = ostime
-	end	
     
-    local objtype = jreq["CssCenter"]["Body"]["ObjType"]
+    	local objtype = jreq["CssCenter"]["Body"]["ObjType"]
 	
 	--开始构造签名 
 	--是否还有存在的必要
@@ -445,10 +431,25 @@ function _M.handle_download_sign(self,jreq)
 				signle_map["Host"] = ngx.shared.storage_key_data:get(storage_bucket.."_DM")	
 				signle_map["URL"] = "/"..url
 				all_map[#all_map + 1] = signle_map
-			else 
-				signle_map["Host"] = ngx.shared.storage_key_data:get(storage_bucket.."_DM")
+			else
+				local header = {}
+				local ostime = nil
+				local version4 = 0
+				if storage_bucket == "S3_s3-eu-nor-01" or
+				   storage_bucket == "S3_s3-eu-pic-01" then
+				        ostime = os.date("%Y%m%dT%H%M%SZ")
+				        header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
+				   	header["x-amz-date"] = ostime
+			           	version4 = 1
+				else
+			           	ostime = os.date("!%a, %d %b %Y %H:%M:%S GMT")
+			           	header["Date"] = ostime
+				end
+			
+		        	signle_map["Host"] = ngx.shared.storage_key_data:get(storage_bucket.."_DM")
 				signle_map["URL"] = "/"..url
 				signle_map["ReqHeader"] = {}
+				
 				if version4 == 0 then 
 					local signature = css_base_iresty:make_signature("GET",header,url,storage_bucket)
 					signle_map["ReqHeader"]["Date"] = ostime
@@ -456,8 +457,8 @@ function _M.handle_download_sign(self,jreq)
 				else 
 					local signature, auth = css_base_iresty:make_signature_aws_v4("GET",header,url,storage_bucket)
 					signle_map["ReqHeader"]["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
-	        		signle_map["ReqHeader"]["x-amz-date"] = ostime
-	        		signle_map["ReqHeader"]["Authorization"] = auth
+	        			signle_map["ReqHeader"]["x-amz-date"] = ostime
+		        		signle_map["ReqHeader"]["Authorization"] = auth
 				end 
 				all_map[#all_map + 1] = signle_map
 			end
