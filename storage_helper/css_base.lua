@@ -165,7 +165,11 @@ function _M.make_signature_aws_v4(self, method,headers,objname,csskey)
 	   not headers["x-amz-date"]  then 
 		return false, "invaild headers key"
 	end 
-		
+	
+	if headers["host"] then
+	    domaininfo = headers["host"]
+	end
+
 	local canonical_headers_table = {}
 	table.insert(canonical_headers_table,"host:"..domaininfo)
 	table.insert(canonical_headers_table,"x-amz-content-sha256:"..headers["x-amz-content-sha256"])

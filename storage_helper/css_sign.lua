@@ -435,18 +435,20 @@ function _M.handle_download_sign(self,jreq)
 				local header = {}
 				local ostime = nil
 				local version4 = 0
+				local host = ngx.shared.storage_key_data:get(storage_bucket.."_DM")
 				if storage_bucket == "S3_s3-eu-nor-01" or
 				   storage_bucket == "S3_s3-eu-pic-01" then
 				        ostime = os.date("%Y%m%dT%H%M%SZ")
 				        header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
 				   	header["x-amz-date"] = ostime
+					header["host"] = host..":80"
 			           	version4 = 1
 				else
 			           	ostime = os.date("!%a, %d %b %Y %H:%M:%S GMT")
 			           	header["Date"] = ostime
 				end
 			
-		        	signle_map["Host"] = ngx.shared.storage_key_data:get(storage_bucket.."_DM")
+		        	signle_map["Host"] = host
 				signle_map["URL"] = "/"..url
 				signle_map["ReqHeader"] = {}
 				
