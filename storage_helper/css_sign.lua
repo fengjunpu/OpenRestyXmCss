@@ -125,7 +125,6 @@ function _M.handle_upload_sign(self,jreq)
 	if storage_bucket == "S3_s3-eu-nor-01" or 
 	   storage_bucket == "S3_s3-eu-pic-01" then
 		ostime = os.date("%Y%m%dT%H%M%SZ")
-		header["host"] = "as3-eu-nor-01.s3.amazonws.com"
         	header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
 	       	header["x-amz-date"] = ostime
 		signature, auth = css_base_iresty:make_signature_aws_v4("PUT",header,objname,storage_bucket)
@@ -171,8 +170,8 @@ function _M.handle_upload_sign(self,jreq)
 		jrsp["CssCenter"]["Body"]["RestFull"]["Authorization"] = signature
 	else
 		jrsp["CssCenter"]["Body"]["RestFull"]["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
-        jrsp["CssCenter"]["Body"]["RestFull"]["x-amz-date"] = ostime
-        jrsp["CssCenter"]["Body"]["RestFull"]["Authorization"] = auth
+        	jrsp["CssCenter"]["Body"]["RestFull"]["x-amz-date"] = ostime
+	        jrsp["CssCenter"]["Body"]["RestFull"]["Authorization"] = auth
 	end
 	
 	local resp_str = cjson.encode(jrsp)
@@ -244,8 +243,8 @@ function _M.handle_multi_ts_sign(self,jreq)
 	if storage_bucket == "S3_s3-eu-nor-01" or 
 	   storage_bucket == "S3_s3-eu-pic-01" then
 		ostime = os.date("%Y%m%dT%H%M%SZ")
-        header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
-       	header["x-amz-date"] = ostime
+        	header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
+	       	header["x-amz-date"] = ostime
 		version4 = 1
 	else
 		ostime = os.date("!%a, %d %b %Y %H:%M:%S GMT")
@@ -275,8 +274,8 @@ function _M.handle_multi_ts_sign(self,jreq)
 			else 
 				signature, auth = css_base_iresty:make_signature_aws_v4("PUT",header,objname,storage_bucket)
 				temp_sign_info["RestFull"]["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
-        		temp_sign_info["RestFull"]["x-amz-date"] = ostime
-        		temp_sign_info["RestFull"]["Authorization"] = auth
+        			temp_sign_info["RestFull"]["x-amz-date"] = ostime
+	        		temp_sign_info["RestFull"]["Authorization"] = auth
 			end 
 			rsp_sign_info[#rsp_sign_info + 1] = temp_sign_info
 		end
