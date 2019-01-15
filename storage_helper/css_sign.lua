@@ -123,12 +123,11 @@ function _M.handle_upload_sign(self,jreq)
 	local version4 = 0
 
 	if storage_bucket == "S3_s3-eu-nor-01" or 
-	   storage_bucket == "S3_s3-eu-vid-01" or
 	   storage_bucket == "S3_s3-eu-pic-01" then
 		ostime = os.date("%Y%m%dT%H%M%SZ")
 		header["host"] = "as3-eu-nor-01.s3.amazonws.com"
-        header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
-       	header["x-amz-date"] = ostime
+        	header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
+	       	header["x-amz-date"] = ostime
 		signature, auth = css_base_iresty:make_signature_aws_v4("PUT",header,objname,storage_bucket)
 		version4 = 1
 	else
@@ -243,7 +242,6 @@ function _M.handle_multi_ts_sign(self,jreq)
 	local signature = nil
 	local auth = nil
 	if storage_bucket == "S3_s3-eu-nor-01" or 
-	   storage_bucket == "S3_s3-eu-vid-01" or
 	   storage_bucket == "S3_s3-eu-pic-01" then
 		ostime = os.date("%Y%m%dT%H%M%SZ")
         header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
@@ -325,7 +323,6 @@ function _M.handle_download_sign(self,jreq)
 	local ostime = nil
 	local version4 = 0
 	if storage_bucket == "S3_s3-eu-nor-01" or 
-	   storage_bucket == "S3_s3-eu-vid-01" or
 	   storage_bucket == "S3_s3-eu-pic-01" then
 		ostime = os.date("%Y%m%dT%H%M%SZ")
         header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
