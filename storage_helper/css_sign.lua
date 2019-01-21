@@ -277,7 +277,8 @@ function _M.handle_multi_ts_sign(self,jreq)
         			temp_sign_info["RestFull"]["x-amz-date"] = ostime
 	        		temp_sign_info["RestFull"]["Authorization"] = auth
 			end 
-			rsp_sign_info[#rsp_sign_info + 1] = temp_sign_info
+			--rsp_sign_info[#rsp_sign_info + 1] = temp_sign_info
+			table.insert(rsp_sign_info, temp_sign_info)
 		end
 	end
 	
