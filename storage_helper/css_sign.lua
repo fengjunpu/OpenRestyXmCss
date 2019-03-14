@@ -195,6 +195,24 @@ function _M.handle_multi_ts_sign(self,jreq)
 	local serinum = jreq["CssCenter"]["Body"]["SerialNumber"]
 	local offset = jreq["CssCenter"]["Body"]["OffsetNum"]
 	local objtype = jreq["CssCenter"]["Body"]["ObjType"]
+	
+	local tempIndex = jreq["CssCenter"]["Body"]["ObjList"][4]["IndexNum"]
+	local tempObjName = jreq["CssCenter"]["Body"]["ObjList"][1]["ObjName"]
+	local tempser = string.match(tempObjName, "%w+_(%w+)_%w+_%w.*")
+	if tempIndex > 100 and tempser == nil then
+		local jrsp = {}
+		jrsp["CssCenter"] = {}
+		jrsp["CssCenter"]["Header"] = {}
+		jrsp["CssCenter"]["Header"]["Version"] = "1.0"
+		jrsp["CssCenter"]["Header"]["CSeq"] = "1"
+		jrsp["CssCenter"]["Header"]["MessageType"] = "MSG_MULTIUPLOAD_SIGN_RSP"
+		jrsp["CssCenter"]["Header"]["ErrorNum"] = string.format("%d",1002)
+		jrsp["CssCenter"]["Header"]["ErrorString"] = "Dev Not Open Cloud Storage"
+		local resp_str = cjson.encode(jrsp)
+		ngx.header.content_length = string.len(resp_str)
+		ngx.say(resp_str)
+		return true
+	end
 		
 	--local res,storage_bucket = css_base_iresty:check_css_flag(serinum,objtype)
 	--检查是支持视频云存储
