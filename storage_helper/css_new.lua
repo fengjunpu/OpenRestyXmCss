@@ -151,6 +151,44 @@ function _M.handle_new_css(self,jreq)
 	return true
 end
 
+function _M.handle_css_switch(self, jreq)
+	if jreq["CssCenter"]["Body"]["SerialNumber"] == nil or 
+		jreq["CssCenter"]["Body"]["Type"] == nil or 
+		jreq["CssCenter"]["Body"]["Switch"] then 
+		return false, "Invalid Request"
+	end 
+	
+	if jreq["CssCenter"]["Body"]["Type"] ~= "PIC" and 
+		jreq["CssCenter"]["Body"]["Type"] ~= "VIDEO" then 
+			return false, "Invalid Obj Type"
+	end 
+	
+	local opt = {["redis_ip"] = redis_ip,["redis_port"] = redis_port,["timeout"] = 3}
+	local red_handler = redis_iresty:new(opt)
+	if not red_handler then
+		return false,"redis_iresty:new failed"
+	end
+	
+	local ObjType = jreq["CssCenter"]["Body"]["Type"].."Enable"
+	local Enable = 0
+	if jreq["CssCenter"]["Body"]["Switch"] == "ON" then 
+		Enable = 1
+	elseif jreq["CssCenter"]["Body"]["Switch"] == "OFF" then 
+		Enable = 0
+	end
+	
+	local resp_str = {}
+	resp_str["CssCenter"] = {}
+	resp_str["CssCenter"]["Header"] = {}
+	resp_str["CssCenter"]["Header"]["ErrorString"] = "Success OK"
+	resp_str["CssCenter"]["Header"]["MessageType"] = "MSG_CSS_SWITCH_RSP"
+	resp_str["CssCenter"]["Header"]["ErrorNum"] = "200"
+	local resp_str = cjson.encode(resp_str)
+	ngx.header.content_length = string.len(resp_str)
+	ngx.say(resp_str)
+	return true 
+end
+
 function _M.handle_new_analyespic(self,jreq)
 	
 	if type(jreq["CssCenter"]["Body"]["Enable"]) == "boolean" and 

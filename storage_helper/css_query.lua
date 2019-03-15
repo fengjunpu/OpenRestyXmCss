@@ -5,8 +5,9 @@ local css_base_iresty = require("storage_helper.css_base")
 local _M = {}      
 _M._VERSION = '1.0'
 
-local NOT_SUPPORT = 1001
-local NOT_OPEN = 1002
+local NOT_SUPPORT = 1001	--设备固件不支持云存储
+local NOT_OPEN = 1002		--设备没有购买云存储
+local NOT_ENABLE = 1003		--不允许设备上传文件到云存储
 
 local redis_ip = ngx.shared.shared_data:get("xmcloud_css_redis_ip")
 local redis_port = 5134
@@ -62,7 +63,27 @@ function _M.handle_dev_query_css(self,jreq)
 	elseif res and not storage_bucket then
 		ngx.log(ngx.ERR,"[QueryCss]:Not Open:",storage_bucket," SeriNum:",serinum," type:",stgtype)
 		internal_send_resp_string(NOT_OPEN,msg_type,"Cloud storage device not open")
-		return true,NOT_OPEN
+		return true, NOT_OPEN
+	end 
+	
+	--检查一下 是否允许设备上传云存储
+	if msg_type == "MSG_CSS_DEV_QUERY_RSP" then 
+		local SwitchKey = stgtype.."Enable"
+		local StorageKey = "<CLOUD_STORAGE>_"..serinum
+		local opt = {["redis_ip"]=redis_ip,["redis_port"]=redis_port,["timeout"]=3}
+		local red_handler = redis_iresty:new(opt)
+		if not red_handler then
+			return false, "redis_iresty:new failed"
+		end
+		
+		local res, err = red_handler:hget(StorageKey, SwitchKey)
+		if not res and err then 
+			return false, "get redis failed"
+		end 
+		if res and res == 0 then 
+			internal_send_resp_string(NOT_ENABLE,msg_type,"Cloud storage device not enable")
+			return true, NOT_ENABLE
+		end 
 	end 
 	
 	if msg_type == "MSG_CSS_DEV_QUERY_RSP"	then

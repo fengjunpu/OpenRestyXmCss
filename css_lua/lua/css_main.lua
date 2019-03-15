@@ -111,6 +111,11 @@ function process_msg()
 		if not ok then
 			send_resp_string(ngx.HTTP_BAD_REQUEST,"MSG_NEW_AI_ANALYSIS_RSP",err)
 		end
+	elseif (jreq["CssCenter"]["Header"]["MessageType"] == "MSG_CSS_SWITCH_REQ") then
+		local ok,err = css_new_iresty:handle_css_switch(jreq)
+		if not ok then
+			send_resp_string(ngx.HTTP_BAD_REQUEST,"MSG_CSS_SWITCH_RSP",err)
+		end
 	elseif (jreq["CssCenter"]["Header"]["MessageType"] == "MSG_CSS_DELETE_REQ") then
 		local ok,err = css_new_iresty:handle_del_css(jreq)
 		if not ok then
