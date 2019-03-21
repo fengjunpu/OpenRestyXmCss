@@ -154,7 +154,7 @@ end
 function _M.handle_css_switch(self, jreq)
 	if jreq["CssCenter"]["Body"]["SerialNumber"] == nil or 
 		jreq["CssCenter"]["Body"]["Type"] == nil or 
-		jreq["CssCenter"]["Body"]["Switch"] then 
+		jreq["CssCenter"]["Body"]["Switch"] == nil then 
 		return false, "Invalid Request"
 	end 
 	
@@ -172,9 +172,14 @@ function _M.handle_css_switch(self, jreq)
 	local ObjType = jreq["CssCenter"]["Body"]["Type"].."Enable"
 	local Enable = 0
 	if jreq["CssCenter"]["Body"]["Switch"] == "ON" then 
-		Enable = 1
+		Enable = "1"
 	elseif jreq["CssCenter"]["Body"]["Switch"] == "OFF" then 
-		Enable = 0
+		Enable = "0"
+	end
+	local Key = "<CLOUD_STORAGE>_"..jreq["CssCenter"]["Body"]["SerialNumber"]
+	local res, err = red_handler:hmset(Key, ObjType, Enable)
+	if not res and err then
+		return false, err
 	end
 	
 	local resp_str = {}

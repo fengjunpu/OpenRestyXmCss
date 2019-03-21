@@ -80,7 +80,7 @@ function _M.handle_dev_query_css(self,jreq)
 		if not res and err then 
 			return false, "get redis failed"
 		end 
-		if res and res == 0 then 
+		if res and tonumber(res) == 0 then 
 			internal_send_resp_string(NOT_ENABLE,msg_type,"Cloud storage device not enable")
 			return true, NOT_ENABLE
 		end 
