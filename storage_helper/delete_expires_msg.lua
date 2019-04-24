@@ -108,6 +108,22 @@ vid_handler = function ()
 	return true
 end
 
+local update_mysqladdr_handler = nil
+update_mysqladdr_handler = function() 
+	local css_mysql_domain = ngx.shared.shared_data:get("xmcloud_css_mysql_domain")
+	if css_mysql_domain then 
+		local css_mysql_ip, _ = wanip_iresty.getdomainip(css_mysql_domain)
+		if css_mysql_ip ~= nil then 
+			ngx.shared.shared_data:set("xmcloud_css_mysql_ip", css_mysql_ip)	
+		end
+	end
+	local ok, err = ngx.timer.at(300, update_mysqladdr_handler) 
+	if not ok and err then 
+		ngx.log(ngx.ERR, "failed to start update mysql addr timer ...", err)
+	end
+	return true
+end
+
 --³ÌÐòÈë¿Ú
 --local pid = ngx.worker.pid()
 local start_flag = "delete_expirse_init_flag"
@@ -125,4 +141,11 @@ if ok then
 		ngx.log(ngx.ERR, "failed to startup 111 video heartbeat timer...", err)
 	end
 	ngx.log(ngx.ERR,"start heartbeat helper ...")
+	
+	--MySQLAddr
+	local ok, err = ngx.timer.at(300, update_mysqladdr_handler)
+	if not ok then
+		ngx.log(ngx.ERR, "failed to startup update_mysqladdr_handler...", err)
+	end
+	ngx.log(ngx.ERR,"start update_mysqladdr_handler ...")
 end
