@@ -1,5 +1,7 @@
 local mysql_iresty = require("storage_helper.mysql_iresty")
 local css_base_iresty = require("storage_helper.css_base")
+local wanip_iresty = require ("common_lua.wanip_iresty")
+local css_sign_iresty = require("storage_helper.css_sign")
 
 local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
 local mysql_port = 8635
@@ -50,24 +52,25 @@ end
 local msg_handler = nil
 msg_handler = function ()
 	--检查mysql_ip是否合法
-	local ip1,ip2,ip3,ip4 = string.match(mysql_ip,"(%w+).(%w+).(%w+).(%w+)")
-	if not ip1 or not ip2 or not ip3 or not ip4 then 
-		local ok, err = ngx.timer.at(1, msg_handler)
-		if not ok then
-			ngx.log(ngx.ERR, "failed to startup msg get ip heartbeat timer...", err)
-		end
-		ngx.log(ngx.ERR,"get msg invalid mysql ip")
-		delete_msg_interval = 10
-	else
-		--开始删除过期消息
-		local res, msg = delete_expirse_from_mysql("MSG") 
-		if not res then 
+	if mysql_ip ~= nil then
+		local ip1,ip2,ip3,ip4 = string.match(mysql_ip,"(%w+).(%w+).(%w+).(%w+)")
+		if not ip1 or not ip2 or not ip3 or not ip4 then 
+			local ok, err = ngx.timer.at(1, msg_handler)
+			if not ok then
+				ngx.log(ngx.ERR, "failed to startup msg get ip heartbeat timer...", err)
+			end
+			ngx.log(ngx.ERR,"get msg invalid mysql ip")
 			delete_msg_interval = 10
-		else 
-			delete_msg_interval = 180
+		else
+			--开始删除过期消息
+			local res, msg = delete_expirse_from_mysql("MSG") 
+			if not res then 
+				delete_msg_interval = 10
+			else 
+				delete_msg_interval = 180
+			end 
 		end 
-	end 
-	
+	end
 	--绑定定时器
 	local ok, err = ngx.timer.at(delete_msg_interval, msg_handler)
 	if not ok then
@@ -81,24 +84,25 @@ end
 local vid_handler = nil
 vid_handler = function ()
 	--检查mysql_ip是否合法
-	local ip1,ip2,ip3,ip4 = string.match(mysql_ip,"(%w+).(%w+).(%w+).(%w+)")
-	if not ip1 or not ip2 or not ip3 or not ip4 then 
-		local ok, err = ngx.timer.at(1, vid_handler)
-		if not ok then
-			ngx.log(ngx.ERR, "failed to startup vid get ip heartbeat timer...", err)
-		end
-		ngx.log(ngx.ERR,"get vid invalid mysql ip")
-		delete_vid_interval = 10
-	else
-		--开始删除
-		local res, msg = delete_expirse_from_mysql("VIDEO") 
-		if not res then 
+	if mysql_ip ~= nil then
+		local ip1,ip2,ip3,ip4 = string.match(mysql_ip,"(%w+).(%w+).(%w+).(%w+)")
+		if not ip1 or not ip2 or not ip3 or not ip4 then 
+			local ok, err = ngx.timer.at(1, vid_handler)
+			if not ok then
+				ngx.log(ngx.ERR, "failed to startup vid get ip heartbeat timer...", err)
+			end
+			ngx.log(ngx.ERR,"get vid invalid mysql ip")
 			delete_vid_interval = 10
-		else 
-			delete_vid_interval = 180
+		else
+			--开始删除
+			local res, msg = delete_expirse_from_mysql("VIDEO") 
+			if not res then 
+				delete_vid_interval = 10
+			else 
+				delete_vid_interval = 180
+			end 
 		end 
 	end 
-	
 	--绑定定时器
 	local ok, err = ngx.timer.at(delete_vid_interval, vid_handler)
 	if not ok then
@@ -115,6 +119,7 @@ update_mysqladdr_handler = function()
 		local css_mysql_ip, _ = wanip_iresty.getdomainip(css_mysql_domain)
 		if css_mysql_ip ~= nil then 
 			ngx.shared.shared_data:set("xmcloud_css_mysql_ip", css_mysql_ip)	
+			css_sign_iresty:set_mysql_addr(css_mysql_ip)
 		end
 	end
 	local ok, err = ngx.timer.at(300, update_mysqladdr_handler) 
@@ -143,7 +148,7 @@ if ok then
 	ngx.log(ngx.ERR,"start heartbeat helper ...")
 	
 	--MySQLAddr
-	local ok, err = ngx.timer.at(300, update_mysqladdr_handler)
+	local ok, err = ngx.timer.at(0.1, update_mysqladdr_handler)
 	if not ok then
 		ngx.log(ngx.ERR, "failed to startup update_mysqladdr_handler...", err)
 	end

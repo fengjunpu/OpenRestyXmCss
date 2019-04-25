@@ -4,7 +4,6 @@ local css_base_iresty = require("storage_helper.css_base")
 local _M = {}      
 _M._VERSION = '1.0'
 
-local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
 local mysql_port = 8635 
 local mysql_user = "root"
 local mysql_pwd = "123456@XiongMai"
@@ -18,7 +17,10 @@ function _M.handle_upload_pic_res(self,jreq)
 	local alarmid = jreq["CssCenter"]["Body"]["AlarmId"]
 	local picname = jreq["CssCenter"]["Body"]["PicName"] 
 	local stgname = jreq["CssCenter"]["Body"]["StorageBucket"]
-	
+	local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
+	if not mysql_ip then 
+		return false, "can not gat sql ip"
+	end 	
 	local opts = { ["mysql_ip"] = mysql_ip,["mysql_port"] = mysql_port,
 	   ["mysql_user"] = mysql_user,["mysql_pwd"] = mysql_pwd,
 	   ["mysql_db"] = mysql_db,["timeout"] = 3
@@ -44,6 +46,10 @@ end
 
 function _M.handle_upload_video_res(self,jreq)
 	--更新数据库
+	local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
+	if not mysql_ip then
+			return false, "can not get sql ip"
+	end 
 	local opts = { ["mysql_ip"] = mysql_ip,["mysql_port"] = mysql_port,
 		       ["mysql_user"] = mysql_user,["mysql_pwd"] = mysql_pwd,
 		       ["mysql_db"] = mysql_db,["timeout"] = 3

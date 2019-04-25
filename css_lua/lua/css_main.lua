@@ -171,21 +171,27 @@ local function load_css_ip_addr()
 			return false 
 		end
 	end
-
---<加载mysql的ip 和 端口>	
-	if not css_mysql_domain then 
+--<GET CSSMySQL Domain>	
+	if not css_mysql_domain then
 		css_mysql_domain = os.getenv("CssMysqlIp")
 		if not css_mysql_domain then 
-			ngx.shared.shared_data:set("xmcloud_css_mysql_domain", css_mysql_domain)
-			local css_mysql_ip, _ = wanip_iresty.getdomainip(css_mysql_domain) 
-			if css_mysql_ip == nil then 
-				return false
-			end 
-			ngx.shared.shared_data:set("xmcloud_css_mysql_ip", css_mysql_ip)
-		else
 			return false
+		else 
+			ngx.shared.shared_data:set("xmcloud_css_mysql_domain", css_mysql_domain)
+		end 
+	end
+
+--<GET CSSMySQL IP>	
+	local css_mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
+	if not css_mysql_ip then
+		css_mysql_ip, _ = wanip_iresty.getdomainip(css_mysql_domain)
+		if not css_mysql_ip then 
+			return false
+		else 
+			css_sign_iresty:set_mysql_addr(css_mysql_ip)
 		end
 	end 
+	
 	return true
 end
 

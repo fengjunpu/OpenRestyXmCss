@@ -390,7 +390,6 @@ function _M.handle_download_sign(self,jreq)
 			if not handledb then
 				return false,err
 			end
-			
 			--从数据里面查询对应的图片名 (因为微信推送不会来主动获取图片名)
 			local select_sql = "SELECT ObjName, StgFlag from alarm_msg_tb where SeriNum=\'"..serinum.."\' and AlarmId=\'"..alarmid.."\'".." limit 1"
 			--ngx.log(ngx.ERR,"select sql:",select_sql)
@@ -504,6 +503,13 @@ function _M.handle_download_sign(self,jreq)
 	ngx.header.content_length = string.len(resp_str)
 	ngx.say(resp_str)
 	return true
+end
+
+function _M.set_mysql_addr(self, css_mysql_ip) 
+	if not css_mysql_ip then 
+		return false
+	end 
+	mysql_ip = css_mysql_ip	
 end
 
 return _M
