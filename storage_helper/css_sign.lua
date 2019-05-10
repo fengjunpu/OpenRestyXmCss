@@ -7,7 +7,7 @@ local redis_iresty = require("common_lua.redis_iresty")
 local mysql_ip = "117.78.36.130"
 local mysql_port = 8635
 --]]
-local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
+--local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
 local mysql_port = 8635 
 local mysql_user = "root"
 local mysql_pwd = "123456@XiongMai"
@@ -380,7 +380,8 @@ function _M.handle_download_sign(self,jreq)
 			local alarmid = string.match(value.ObjName,"%w+_(%w+).jpeg")
 			if not alarmid then 
 				return false, "invalid objname"
-			end 
+			end
+			local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip") 
 			local opts = { ["mysql_ip"] = mysql_ip,["mysql_port"] = mysql_port,
 					   ["mysql_user"] = mysql_user,["mysql_pwd"] = mysql_pwd,
 					   ["mysql_db"] = mysql_db,["timeout"] = 3

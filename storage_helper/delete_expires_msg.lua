@@ -3,7 +3,7 @@ local css_base_iresty = require("storage_helper.css_base")
 local wanip_iresty = require ("common_lua.wanip_iresty")
 local css_sign_iresty = require("storage_helper.css_sign")
 
-local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
+--local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
 local mysql_port = 8635
 local mysql_user = "root"
 local mysql_pwd = "123456@XiongMai"
@@ -19,7 +19,8 @@ local function delete_expirse_from_mysql(deltype)
 		ngx.log(ngx.ERR,"[delete]:Invalid delete type: ",deltype)
 		return false
 	end 
-	
+
+	local mysql_ip = ngx.shared.shared_data:get("xmcloud_css_mysql_ip")
 	local opts = { ["mysql_ip"] = mysql_ip,["mysql_port"] = mysql_port,
            ["mysql_user"] = mysql_user,["mysql_pwd"] = mysql_pwd,
            ["mysql_db"] = mysql_db,["timeout"] = 3
