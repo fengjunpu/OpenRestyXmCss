@@ -121,12 +121,17 @@ function _M.handle_upload_sign(self,jreq)
 	local signature = nil
 	local auth = nil
 	local version4 = 0
-
+	
+	
 	if storage_bucket == "S3_s3-eu-nor-01" or 
-	   storage_bucket == "S3_s3-eu-pic-01" then
+	   storage_bucket == "S3_s3-eu-pic-01" or 
+	   storage_bucket == "S3_s3-vid-01" then
 		ostime = os.date("%Y%m%dT%H%M%SZ")
         	header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
 	       	header["x-amz-date"] = ostime
+		if storage_bucket == "S3_s3-vid-01" then 
+			objname = "s3-vid-01/" .. objname
+		end 	
 		signature, auth = css_base_iresty:make_signature_aws_v4("PUT",header,objname,storage_bucket)
 		version4 = 1
 	else
@@ -259,7 +264,8 @@ function _M.handle_multi_ts_sign(self,jreq)
 	local signature = nil
 	local auth = nil
 	if storage_bucket == "S3_s3-eu-nor-01" or 
-	   storage_bucket == "S3_s3-eu-pic-01" then
+	   storage_bucket == "S3_s3-eu-pic-01" or 
+	   storage_bucket == "S3_s3-vid-01" then
 		ostime = os.date("%Y%m%dT%H%M%SZ")
         	header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
 	       	header["x-amz-date"] = ostime
@@ -289,7 +295,10 @@ function _M.handle_multi_ts_sign(self,jreq)
 				signature = css_base_iresty:make_signature("PUT",header,objname,storage_bucket)
 				temp_sign_info["RestFull"]["Date"] = ostime
 				temp_sign_info["RestFull"]["Authorization"] = signature
-			else 
+			else
+				if storage_bucket == "S3_s3-vid-01"  then 
+					objname = "s3-vid-01/" .. objname
+				end
 				signature, auth = css_base_iresty:make_signature_aws_v4("PUT",header,objname,storage_bucket)
 				temp_sign_info["RestFull"]["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
         			temp_sign_info["RestFull"]["x-amz-date"] = ostime
@@ -455,7 +464,8 @@ function _M.handle_download_sign(self,jreq)
 				local version4 = 0
 				local host = ngx.shared.storage_key_data:get(storage_bucket.."_DM")
 				if storage_bucket == "S3_s3-eu-nor-01" or
-				   storage_bucket == "S3_s3-eu-pic-01" then
+				   storage_bucket == "S3_s3-eu-pic-01" or 
+				   storage_bucket == "S3_s3-vid-01" then
 				        ostime = os.date("%Y%m%dT%H%M%SZ")
 				        header["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD"
 				   	header["x-amz-date"] = ostime
@@ -465,8 +475,12 @@ function _M.handle_download_sign(self,jreq)
 			           	ostime = os.date("!%a, %d %b %Y %H:%M:%S GMT")
 			           	header["Date"] = ostime
 				end
-			
-		        	signle_map["Host"] = host
+				
+				if storage_bucket == "S3_s3-vid-01" then 	
+					url = "s3-vid-01/" .. url						
+				end
+
+		        signle_map["Host"] = host
 				signle_map["URL"] = "/"..url
 				signle_map["ReqHeader"] = {}
 				
@@ -497,9 +511,7 @@ function _M.handle_download_sign(self,jreq)
 	jrsp["CssCenter"]["Header"]["Version"] = "1.0"
 	jrsp["CssCenter"]["Header"]["ErrorString"] = "Success OK"
 	jrsp["CssCenter"]["Header"]["ErrorNum"] = "200"
-	if #all_map == 0 then 
-		local debug_str = cjson.encode(jreq)
-	end
+	
 	local resp_str = cjson.encode(jrsp)
 	ngx.header.content_length = string.len(resp_str)
 	ngx.say(resp_str)
